@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>OpsForge v0.7.2</title>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+<div id="loginOverlay" class="auth-overlay">
+  <form id="loginForm" class="auth-card">
+    <div class="eyebrow">OPSFORGE ACCESS CONTROL</div>
+    <h1>Sign in to the NOC</h1>
+    <p>v0.7.2 keeps the v0.6 identity model and adds the reliability command center. First-run credentials are written only to <code>data/security/admin-bootstrap.txt</code>.</p>
+    <label>Username<input id="loginUsername" autocomplete="username" value="admin" required/></label>
+    <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required/></label>
+    <button class="primary" type="submit">Sign in</button>
+    <div id="loginError" class="auth-error"></div>
+  </form>
+</div>
+
+<div id="passwordOverlay" class="auth-overlay hidden">
+  <form id="passwordForm" class="auth-card">
+    <div class="eyebrow">PASSWORD CHANGE REQUIRED</div>
+    <h1>Replace the temporary password</h1>
+    <p>Use at least 12 characters with uppercase, lowercase, a number, and a symbol.</p>
+    <label>Current password<input id="currentPassword" type="password" autocomplete="current-password" required/></label>
+    <label>New password<input id="newPassword" type="password" autocomplete="new-password" required/></label>
+    <label>Confirm new password<input id="confirmPassword" type="password" autocomplete="new-password" required/></label>
+    <button class="primary" type="submit">Change password</button>
+    <div id="passwordError" class="auth-error"></div>
+  </form>
+</div>
+
+<header class="topbar">
+  <div class="brand-lockup"><div class="brand">OPSFORGE</div><div class="subtitle">Reliability Command Center · v0.7.2</div></div>
+  <div class="topbar-actions">
+    <span id="currentUser" class="status-pill neutral">Not signed in</span>
+    <button id="changePassword" class="secondary compact">Password</button>
+    <button id="logout" class="secondary compact">Sign out</button>
+    <div id="serverStatus" class="status-pill neutral">Checking server…</div>
+  </div>
+</header>
+
+<main id="appMain" class="hidden">
+<section class="hero panel">
+  <div>
+    <div class="eyebrow">OBSERVE → CORRELATE → OWN → REMEDIATE → MEASURE</div>
+    <h1>A NOC that can explain reliability, not just display red lights.</h1>
+    <p>Historical telemetry, SLA/error-budget tracking, incident analytics, operator ownership, maintenance windows, multi-node topology, and verified remediation now live in one C#/.NET 8 command center.</p>
+  </div>
+  <div class="hero-actions">
+    <button id="killDemo" class="danger" disabled>Inject Demo Failure</button>
+    <button id="previewRestart" class="primary" disabled>Preview Restart</button>
+  </div>
+</section>
+
+<section class="panel command-center">
+  <div class="section-title-row">
+    <div><div class="eyebrow">EXECUTIVE RELIABILITY</div><h2>Service health and error budget</h2></div>
+    <div class="filter-row">
+      <label>Window<select id="analyticsRange"><option value="24">24 hours</option><option value="168">7 days</option><option value="720">30 days</option></select></label>
+      <label>SLA target<select id="slaTarget"><option value="99">99.0%</option><option value="99.5">99.5%</option><option value="99.9" selected>99.9%</option><option value="99.95">99.95%</option><option value="99.99">99.99%</option></select></label>
+      <button id="refreshAnalytics" class="secondary compact">Refresh analytics</button>
+    </div>
+  </div>
+  <div class="reliability-metrics">
+    <div class="metric-card emphasis"><span>Fleet availability</span><strong id="fleetAvailability">—</strong><small id="fleetAvailabilitySub">Waiting for history</small></div>
+    <div class="metric-card"><span>Error budget remaining</span><strong id="errorBudget">—</strong><small id="errorBudgetSub">Against SLA target</small></div>
+    <div class="metric-card"><span>Primary incidents opened</span><strong id="analyticsIncidents">—</strong><small id="analyticsResolved">— resolved</small></div>
+    <div class="metric-card"><span>Average MTTR</span><strong id="analyticsMttr">—</strong><small>Resolved primary incidents</small></div>
+    <div class="metric-card"><span>Maintenance excluded</span><strong id="maintenanceExcluded">—</strong><small id="activeMaintenanceMetric">— active windows</small></div>
+  </div>
+  <div class="chart-grid">
+    <article class="chart-card"><div class="chart-head"><div><span>Availability</span><strong>Fleet SLA history</strong></div><span id="availabilityLegend" class="chart-legend">—</span></div><div id="availabilityChart" class="chart-surface empty-state">Collecting history…</div></article>
+    <article class="chart-card"><div class="chart-head"><div><span>Resources</span><strong>Fleet CPU / memory</strong></div><span class="chart-legend">CPU · Memory</span></div><div id="resourceChart" class="chart-surface empty-state">Collecting history…</div></article>
+    <article class="chart-card"><div class="chart-head"><div><span>Incidents</span><strong>Opened / resolved trend</strong></div><span class="chart-legend">Operational load</span></div><div id="incidentTrendChart" class="chart-surface empty-state">No incident history yet.</div></article>
+  </div>
+  <h3>Per-node reliability</h3>
+  <div id="reliabilityTable" class="table-wrap empty-state">No historical nodes yet.</div>
+</section>
+
+<section class="metrics-grid live-metrics">
+  <div class="panel metric-card"><span>Agents online</span><strong id="agentsOnline">—</strong></div>
+  <div class="panel metric-card"><span>Primary incidents</span><strong id="primaryIncidentCount">—</strong></div>
+  <div class="panel metric-card"><span>Unowned incidents</span><strong id="unownedIncidentCount">—</strong></div>
+  <div class="panel metric-card"><span>Acknowledged</span><strong id="ackIncidentCount">—</strong></div>
+  <div class="panel metric-card"><span>Actionable signals</span><strong id="actionableSignalCount">—</strong></div>
+  <div class="panel metric-card"><span>Maintenance-muted</span><strong id="maintenanceMutedCount">—</strong></div>
+</section>
+
+<section class="panel maintenance-section">
+  <div class="section-title-row"><div><div class="eyebrow">CHANGE CALENDAR</div><h2>Maintenance windows</h2></div><span class="muted">Excluded from SLA denominator while active</span></div>
+  <div class="maintenance-form" data-min-role="operator">
+    <label>Name<input id="maintenanceName" placeholder="Demo service maintenance"/></label>
+    <label>Target<select id="maintenanceAgent"><option value="*">All agents</option></select></label>
+    <label>Start<input id="maintenanceStart" type="datetime-local"/></label>
+    <label>End<input id="maintenanceEnd" type="datetime-local"/></label>
+    <label class="wide">Reason<input id="maintenanceReason" placeholder="Planned patching / deployment / lab exercise"/></label>
+    <div class="button-cell"><button id="createMaintenance" class="primary">Schedule maintenance</button></div>
+  </div>
+  <div id="maintenanceList" class="maintenance-list empty-state">No maintenance windows.</div>
+</section>
+
+<section class="panel primary-section">
+  <div class="section-title-row"><div><div class="eyebrow">OPERATOR QUEUE</div><h2>Primary Incidents</h2></div><span class="muted">Acknowledge · take ownership · remediate</span></div>
+  <div id="primaryIncidentList" class="primary-list empty-state">No primary incidents yet.</div>
+</section>
+
+<section id="previewPanel" class="panel preview-panel hidden">
+  <div class="section-title-row"><div><div class="eyebrow">CHANGE CONTROL</div><h2>Remediation Preview</h2></div><button id="cancelPreview" class="secondary">Cancel</button></div>
+  <p id="previewSummary" class="preview-summary"></p><div id="previewGrid" class="preview-grid"></div>
+  <div class="preview-actions"><button id="executePreview" class="primary">Execute approved restart</button></div>
+</section>
+
+<section class="panel topology-section">
+  <div class="section-title-row"><div><div class="eyebrow">LIVE SERVICE TOPOLOGY</div><h2>Multi-node NOC map</h2></div><span id="topologySummary" class="status-pill neutral">Waiting…</span></div>
+  <div id="topologyCanvas" class="topology-canvas empty-state">Waiting for agents…</div>
+  <h3>Dependency / blast-radius paths</h3><div id="dependencyPaths" class="dependency-paths"></div>
+</section>
+
+<section class="two-column">
+  <section class="panel">
+    <div class="section-title-row"><div><div class="eyebrow">NODE INSPECTOR</div><h2 id="machineName">Waiting for agent…</h2></div><select id="agentSelect" class="agent-select"></select></div>
+    <div id="hostDetails" class="detail-grid"></div>
+    <div class="meter-block"><div class="meter-label"><span>CPU</span><span id="cpuLabel">—</span></div><progress id="cpuBar" max="100" value="0"></progress></div>
+    <div class="meter-block"><div class="meter-label"><span>Memory</span><span id="memoryLabel">—</span></div><progress id="memoryBar" max="100" value="0"></progress></div>
+    <div class="chart-head node-chart-head"><div><span>History</span><strong id="nodeHistoryTitle">CPU / memory trend</strong></div><span id="nodeHistoryRange" class="chart-legend">24h</span></div>
+    <div id="nodeHistoryChart" class="chart-surface mini-chart empty-state">Collecting history…</div>
+    <h3>Processes</h3><div id="processList" class="stack"></div>
+    <h3>Windows services</h3><div id="serviceList" class="stack"></div>
+    <h3>Probes</h3><div id="probeList" class="stack"></div>
+  </section>
+  <section class="panel"><div class="eyebrow">ALERT NOISE CONTROL</div><h2>Diagnostic Signals</h2><p class="muted">Correlated or maintenance-muted signals remain evidence without inflating the actionable count.</p><div id="incidentList" class="timeline"></div></section>
+</section>
+
+<section class="two-column">
+  <section class="panel"><div class="eyebrow">FORENSICS</div><h2>Operational Timeline</h2><div id="timelineList" class="timeline"></div></section>
+  <section class="panel"><div class="eyebrow">CHANGE AUDIT</div><h2>Remediation Commands</h2><div id="commandList" class="command-list"></div></section>
+</section>
+
+<section class="panel security-panel">
+  <div class="section-title-row"><div><div class="eyebrow">SECURITY CONTROL PLANE</div><h2>Identity and transport</h2></div><span id="securityTransport" class="status-pill neutral">Checking…</span></div>
+  <div id="securityDetails" class="security-copy"></div>
+</section>
+
+<section class="panel">
+  <div class="section-title-row"><div><div class="eyebrow">PERSISTENT INVENTORY</div><h2>Enrolled agents</h2></div><span class="muted">API-key fingerprint · optional mTLS identity</span></div>
+  <div id="inventoryList" class="inventory-list empty-state">No enrolled agents yet.</div><div id="agentHistory" class="history-strip"></div>
+</section>
+
+<section class="panel admin-only" data-min-role="administrator">
+  <div class="section-title-row"><div><div class="eyebrow">HUMAN ACCESS</div><h2>Operator accounts</h2></div><span class="status-pill neutral">RBAC</span></div>
+  <div class="onboarding-grid">
+    <label>Username<input id="newUsername" placeholder="alex.ops"/></label>
+    <label>Display name<input id="newDisplayName" placeholder="Alex Operator"/></label>
+    <label>Role<select id="newRole"><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="administrator">Administrator</option></select></label>
+    <div class="button-cell"><button id="createUser" class="primary">Create account</button></div>
+  </div>
+  <div id="userCredentialResult" class="enrollment-result hidden"></div><div id="userList" class="inventory-list"></div>
+</section>
+
+<section class="panel onboarding-section admin-only" data-min-role="administrator">
+  <div class="section-title-row"><div><div class="eyebrow">AGENT ONBOARDING</div><h2>Enroll a Windows node</h2></div><span class="status-pill neutral">API key shown once</span></div>
+  <div class="onboarding-grid">
+    <label>Agent ID<input id="enrollAgentId" placeholder="branch-01"/></label>
+    <label>Display name<input id="enrollDisplayName" placeholder="Branch Node 01"/></label>
+    <label>Site<input id="enrollSite" placeholder="Denver Branch"/></label>
+    <label>Environment<input id="enrollEnvironment" value="lab"/></label>
+    <label>mTLS certificate thumbprint<input id="enrollCertificateThumbprint" placeholder="Optional; bind now if pre-provisioned"/></label>
+    <div class="button-cell"><button id="enrollAgent" class="primary">Enroll agent</button></div>
+  </div>
+  <div id="enrollmentResult" class="enrollment-result hidden"></div>
+</section>
+
+<section class="panel admin-only" data-min-role="administrator">
+  <div class="section-title-row"><div><div class="eyebrow">SECURITY AUDIT</div><h2>Attributed audit log</h2></div><span class="muted">Authentication · ownership · maintenance · remediation</span></div>
+  <div id="auditList" class="timeline"></div>
+</section>
+</main>
+<footer>OpsForge v0.7.2 · C# / .NET 8 · Reliability analytics · SLA/error budget · maintenance · RBAC · agent authentication</footer>
+<script src="app.js"></script>
+</body>
+</html>

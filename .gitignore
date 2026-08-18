@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+data/security/
+data/agents/
+*.credentials.json
+
+*.pfx

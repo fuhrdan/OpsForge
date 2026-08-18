@@ -1,0 +1,38 @@
+OPSFORGE v0.7.2 - FULL BUILD MANIFEST
+======================================
+
+This archive is a complete standalone OpsForge source release.
+
+You DO NOT need v0.1.0, v0.2.0, v0.3.0, v0.4.0, v0.5.0, or v0.6.0.
+You DO NOT need to overlay this archive onto an older version.
+You DO NOT need an existing OpsForge database.
+
+Included in this release:
+- OpsForge.sln
+- OpsForge.Contracts (complete project)
+- OpsForge.Server (complete project + browser dashboard)
+- OpsForge.Agent (complete project)
+- OpsForge.DemoService (complete project)
+- build/start/stop scripts
+- remote-agent publishing/onboarding scripts
+- full-build smoke test
+- configuration templates
+- SQLite schema creation and v0.6 -> v0.7 migration logic
+- README / changelog / license
+
+Generated runtime files are intentionally NOT included:
+- data/opsforge.db
+- data/security/*
+- data/agents/*
+- bin/* and obj/*
+
+Those files are created locally on first run.
+
+Required runtime/build prerequisite:
+- .NET 8 SDK
+
+Start here:
+  START-HERE.cmd
+
+Optional end-to-end test:
+  powershell -ExecutionPolicy Bypass -File .\Test-OpsForge.ps1
