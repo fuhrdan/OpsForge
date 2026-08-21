@@ -1,199 +1,645 @@
-# OpsForge v0.7.2
+# OpsForge
 
-OpsForge is a self-contained C#/.NET 8 incident-response and NOC lab. **This v0.7.2 ZIP is a full build, not an incremental patch. You do not need v0.1-v0.6 or any files from an earlier OpsForge release.**
+**A .NET 8 IT operations and incident-response platform for monitoring distributed Windows systems, correlating failures, managing incidents, and measuring service reliability.**
 
-v0.7.2 adds a reliability command center on top of the complete agent authentication, RBAC, audit, correlation, topology, remediation, and optional mTLS feature set from earlier releases.
+[![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet\&logoColor=white)](https://dotnet.microsoft.com/)
+[![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
+[![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
+[![Version](https://img.shields.io/badge/version-v0.7.2-blue)](CHANGELOG.md)
 
-## Requirements
+**Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**
 
-- Windows 10/11 or Windows Server for the complete local demo experience.
-- .NET 8 SDK available as `dotnet` in `PATH`.
-- PowerShell 5.1+.
-- A modern browser.
+---
 
-No Node.js, Python, external chart package, external database server, or previous OpsForge installation is required. NuGet restore performed by `dotnet build` supplies the project's normal .NET package dependencies.
+## Overview
 
-## First 60 seconds
+OpsForge is a self-contained IT operations / NOC lab built with C# and .NET 8.
 
-1. Extract the **entire** `OpsForge-v0.7.2` folder from the ZIP.
-2. Double-click `START-HERE.cmd`.
-3. OpsForge restores/builds the solution, initializes a fresh SQLite database if needed, starts the server, demo HTTP service, and local Windows agent, then opens `http://localhost:5080`.
-4. On the first run only, open `data/security/admin-bootstrap.txt`.
-5. Sign in as `admin` using the temporary password in that file.
-6. Choose a permanent password. The obsolete bootstrap credential file is deleted automatically after the change succeeds.
-7. The local agent enrolls automatically. Use **Inject Demo Failure** to create a correlated outage, acknowledge/take ownership of it, preview the restart, execute it, and watch later telemetry verify recovery.
-8. Open **Executive Reliability** to inspect availability, SLA/error budget, MTTR, incident trends, resource history, and per-node reliability.
+It combines a central ASP.NET Core server, authenticated Windows agents, persistent telemetry, topology discovery, incident correlation, operator workflows, reliability analytics, and a constrained remediation channel into a single runnable environment.
 
-`START-HERE.cmd` always performs a real `dotnet build` first and stops if compilation fails.
+The project models the operational lifecycle around a failure:
 
-## v0.7 Reliability Command Center
+**observe → correlate → acknowledge → assign → investigate → preview remediation → execute → verify recovery → measure reliability**
 
-The v0.7 dashboard adds persistent operational history rather than relying only on the latest heartbeat:
+OpsForge is a portfolio/lab platform with increasingly production-oriented controls. It is not presented as a finished enterprise monitoring or security product.
 
-- fleet availability for 24 hours, 7 days, or 30 days
-- configurable SLA target and remaining error budget
-- CPU and memory history
-- probe success rate and average latency
-- incident-open/resolution trend
-- average MTTR
-- per-agent reliability table
-- per-node historical telemetry chart
-- maintenance-excluded monitored time
-- active maintenance count
-- acknowledged and unowned primary-incident counts
+---
 
-Telemetry samples are retained for 30 days. OpsForge records at most one reliability sample per agent every 15 seconds to keep the lab database compact.
+## Screenshot
 
-### Availability calculation
+<p align="center">
+  <img src="docs/images/opsforge-dashboard.png" alt="OpsForge IT operations and incident-response dashboard" width="1000">
+</p>
 
-OpsForge does not equate “no sample” with “healthy.” A heartbeat establishes a short healthy interval; when the gap exceeds the offline threshold, the remainder counts as unavailable until another heartbeat arrives. This lets the historical view reflect agent loss instead of silently dropping missing time.
+<p align="center">
+  <em>OpsForge operations dashboard showing monitored systems, incidents, telemetry, reliability, and operator workflows.</em>
+</p>
 
-Planned maintenance is removed from the SLA denominator. Maintenance cannot be backdated by more than five minutes, preventing an operator from retroactively rewriting a bad outage into planned maintenance.
+---
 
-## Incident workflow
+## What OpsForge Demonstrates
 
-Primary Incidents now support an operator lifecycle:
+* Distributed system monitoring
+* Authenticated agent/server communication
+* Windows process and service telemetry
+* HTTP, TCP, and DNS probes
+* Incident correlation and probable root cause
+* Dependency topology and blast-radius analysis
+* Role-based access control
+* Operator acknowledgement and incident ownership
+* Persistent audit logging
+* Maintenance windows
+* SLA and error-budget calculations
+* MTTR and reliability analytics
+* Persistent telemetry history
+* Constrained remote remediation
+* Remediation verification
+* SQLite schema evolution
+* Security-conscious agent enrollment and key rotation
+* Optional certificate-bound agent identity
 
-- **Acknowledge** — records that an operator has seen the incident.
-- **Take ownership / assign** — persists the responsible Operator or Administrator.
-- **Release ownership** — returns the incident to the unowned queue.
-- **Maintenance suppression** — keeps the failure and evidence visible while removing it from the actionable NOC count during a valid maintenance window.
-- **Preview → Execute → Verify** — retains the existing constrained-remediation workflow. Execution alone is not considered recovery; later telemetry must verify it.
+---
 
-Acknowledgement, assignment, maintenance scheduling/cancellation, remediation, and security actions are written to the persistent timeline/audit trail with operator attribution.
+## First 60 Seconds
 
-## Roles
+### Requirements
 
-- **Viewer** — read-only NOC, reliability, incident, topology, telemetry history, reports, inventory, and maintenance visibility.
-- **Operator** — Viewer plus acknowledgement/ownership, maintenance scheduling/cancellation, failure injection, and remediation.
-- **Administrator** — Operator plus user management, agent enrollment, API-key rotation/revocation, certificate binding, and the security audit log.
+* Windows 10/11 or Windows Server for the complete local demo
+* .NET 8 SDK available through `dotnet`
+* PowerShell 5.1 or newer
+* A modern web browser
 
-## Correlation, topology, and noise reduction
+No Node.js, Python, external database server, or previous OpsForge version is required.
 
-The full v0.7 build includes the earlier deterministic operations engine:
+### Start the lab
 
-- process, Windows service, HTTP, TCP, and DNS monitoring
-- multi-agent inventory and live telemetry
-- dynamic topology and cross-machine dependency discovery
-- process → listener → application dependency modeling
-- deterministic incident correlation
-- probable root cause and confidence
-- blast-radius traversal
-- derivative-signal suppression without deleting evidence
-- incident reassessment as telemetry changes
-- persistent incident and command history
-- Markdown incident reports
+Clone or download OpsForge, open the repository root, and double-click:
 
-The local demo models:
+```text
+START-HERE.cmd
+```
 
-`OpsForge.DemoService process → TCP/5091 → HTTP /health`
+The startup script:
 
-Killing the demo process therefore provides several independent symptoms that OpsForge can correlate into a single Primary Incident.
+1. Performs a real `dotnet build`
+2. Stops if compilation fails
+3. Initializes a fresh SQLite database when needed
+4. Starts the OpsForge server
+5. Starts the deliberately killable demo HTTP service
+6. Starts a local Windows monitoring agent
+7. Opens the dashboard at:
 
-## Operator authentication and audit
+```text
+http://localhost:5080
+```
 
-Operator passwords use PBKDF2-SHA256 with per-user random salts and 210,000 iterations. Interactive login creates an 8-hour server-side session. Browser mutation requests require the HttpOnly SameSite=Strict session cookie and the session CSRF token. Repeated failed logins are throttled.
+### First Login
 
-Temporary passwords from account creation/reset are displayed once. Password reset revokes that user's active sessions and forces another password change.
+On the first run, open:
 
-The persistent audit log records actor, role, action, target, outcome, source IP, detail, and UTC timestamp. Remediation command records also carry the requesting operator's username.
+```text
+data/security/admin-bootstrap.txt
+```
 
-## Agent enrollment and authentication
+Sign in as:
 
-Every non-revoked agent has its own high-entropy API key. The server stores the key hash and fingerprint, not the plaintext credential. Agent heartbeat, command polling, and command result submission require that credential.
+```text
+admin
+```
 
-The independent bootstrap enrollment token is stored at:
+using the temporary password in that file.
 
-`data/security/enrollment-token.txt`
+OpsForge requires the bootstrap password to be replaced with a permanent password. The obsolete bootstrap credential file is removed after the password change succeeds.
 
-A remote agent needs it only for first enrollment. The returned API key is then stored in the agent credentials file.
+### Trigger a Complete Incident Workflow
 
-Administrators can rotate an API key or revoke an agent. Rotation invalidates the old key immediately.
+Once signed in:
 
-## Optional agent mTLS
+1. Use **Inject Demo Failure**
+2. Watch multiple symptoms become a correlated Primary Incident
+3. Acknowledge the incident
+4. Take ownership
+5. Preview the proposed restart
+6. Execute the remediation
+7. Wait for later telemetry to verify recovery
+8. Open **Executive Reliability** to review availability, SLA/error budget, MTTR, trends, resource history, and per-node reliability
 
-v0.7 preserves optional certificate-bound agent identity. Agents can generate and persist a client certificate, and an HTTPS OpsForge deployment can require both the correct API key and the bound client certificate thumbprint.
+This provides a complete working demonstration without requiring external infrastructure.
 
-Example server settings:
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A1[Windows Agent] -->|Authenticated telemetry| S[OpsForge Server]
+    A2[Remote Windows Agent] -->|API key / optional mTLS| S
+
+    S --> DB[(SQLite)]
+    S --> CORR[Correlation Engine]
+    S --> TOPO[Topology Engine]
+    S --> REL[Reliability Analytics]
+    S --> AUDIT[Audit Trail]
+    S --> UI[Browser NOC UI]
+
+    CORR --> INC[Primary Incidents]
+    TOPO --> INC
+    REL --> UI
+    INC --> UI
+
+    UI -->|Preview / Execute| CMD[Constrained Command Channel]
+    CMD --> A1
+    CMD --> A2
+    A1 -->|Later telemetry verifies recovery| S
+```
+
+### Solution Layout
+
+```text
+OpsForge/
+├── OpsForge.Server/          # ASP.NET Core server, UI, persistence,
+│                             # correlation, topology and reliability
+├── OpsForge.Agent/           # Windows telemetry, probes and command agent
+├── OpsForge.Contracts/       # Shared DTOs / contracts
+├── OpsForge.DemoService/     # Deliberately killable demonstration service
+├── OpsForge.sln              # Complete .NET solution
+├── START-HERE.cmd            # Build + launch complete local lab
+├── STOP-OPSFORGE.cmd         # Stop local OpsForge processes
+├── Test-OpsForge.ps1         # Full-build compiler/runtime smoke test
+├── Publish-Remote-Agent.ps1  # Build a copyable remote-agent package
+├── CHANGELOG.md
+└── LICENSE.txt
+```
+
+---
+
+## Core Capabilities
+
+### Monitoring
+
+Agents can collect or evaluate:
+
+* CPU and memory usage
+* Process state
+* Windows service state
+* HTTP endpoints
+* TCP endpoints
+* DNS resolution
+* Agent heartbeat / availability
+* Inventory and status information
+
+Telemetry is persisted so the UI can show both current state and historical reliability.
+
+### Multi-Agent Operations
+
+OpsForge supports multiple enrolled agents rather than assuming a single monitored machine.
+
+The server maintains agent inventory, live status, persistent telemetry, agent-specific credentials, API-key fingerprints, revocation state, historical reliability, and topology relationships.
+
+---
+
+## Incident Correlation
+
+OpsForge does not treat every failed probe as an unrelated alert.
+
+The correlation engine can combine multiple symptoms into a **Primary Incident** using deterministic reasoning based on system relationships and evidence.
+
+Capabilities include:
+
+* Probable root cause
+* Confidence information
+* Dependency traversal
+* Blast-radius analysis
+* Derivative-signal suppression
+* Incident reassessment as telemetry changes
+* Persistent incident history
+* Markdown incident reports
+
+The default local demo models:
+
+```text
+OpsForge.DemoService process
+        ↓
+TCP listener :5091
+        ↓
+HTTP /health
+```
+
+Killing the demo process therefore creates multiple symptoms that can be correlated into one operational incident rather than three unrelated alerts.
+
+---
+
+## Incident Workflow
+
+### Acknowledge
+
+Records that someone has seen and accepted responsibility for investigating the incident.
+
+### Take Ownership / Assign
+
+Associates a specific Operator or Administrator with the incident.
+
+### Release Ownership
+
+Returns an incident to the unowned queue.
+
+### Maintenance Suppression
+
+Keeps diagnostic evidence visible while removing planned failures from actionable NOC counts during a valid maintenance window.
+
+### Preview → Execute → Verify
+
+OpsForge intentionally separates command execution from recovery.
+
+```text
+Preview remediation
+        ↓
+Operator approval
+        ↓
+Execute constrained command
+        ↓
+Wait for subsequent telemetry
+        ↓
+Verify recovery
+```
+
+A command returning successfully does **not** automatically mark a system healthy. Later monitoring evidence must verify recovery.
+
+---
+
+## Reliability Command Center
+
+The v0.7 line adds persistent reliability analytics.
+
+Available views include:
+
+* 24-hour, 7-day, and 30-day reliability
+* Fleet and per-agent availability
+* Configurable SLA target
+* Remaining error budget
+* CPU and memory history
+* Probe success rate and average latency
+* Incident-open and resolution trends
+* Mean time to recovery (MTTR)
+* Per-node telemetry history
+* Maintenance-excluded monitored time
+* Active maintenance counts
+* Acknowledged and unowned incident counts
+
+Telemetry samples are retained for 30 days and throttled to keep the local SQLite database compact.
+
+### Availability Model
+
+OpsForge does not silently interpret missing telemetry as healthy.
+
+A heartbeat creates a short healthy interval. Once the offline threshold is exceeded, the remaining gap is counted as unavailable until communication resumes.
+
+Planned maintenance is excluded from the SLA denominator.
+
+Maintenance cannot be backdated by more than five minutes, preventing an operator from rewriting a historical outage as planned maintenance after the fact.
+
+---
+
+## Roles and RBAC
+
+### Viewer
+
+Read-only access to NOC status, reliability, incidents, topology, telemetry history, reports, inventory, and maintenance visibility.
+
+### Operator
+
+Includes Viewer permissions plus incident acknowledgement/ownership, maintenance scheduling/cancellation, failure injection, and remediation.
+
+### Administrator
+
+Includes Operator permissions plus user management, agent enrollment, API-key rotation/revocation, certificate binding, and security audit visibility.
+
+---
+
+## Operator Authentication
+
+Operator credentials use:
+
+* PBKDF2-SHA256 password hashing
+* Per-user random salts
+* 210,000 PBKDF2 iterations
+* Forced replacement of temporary passwords
+* Server-side sessions
+* 8-hour interactive session lifetime
+* HttpOnly session cookies
+* SameSite=Strict session behavior
+* CSRF protection on browser mutation requests
+* Login throttling
+
+Password reset revokes active sessions and forces another password change.
+
+---
+
+## Audit Trail
+
+Security and operational changes are persisted with attribution.
+
+Audit records include information such as actor, role, action, target, outcome, source IP, detail, and UTC timestamp.
+
+Examples include:
+
+* Authentication events
+* Incident acknowledgement
+* Ownership changes
+* Maintenance scheduling/cancellation
+* Remediation actions
+* Agent enrollment/security operations
+* Key rotation and revocation
+
+---
+
+## Agent Enrollment and Authentication
+
+Each non-revoked agent receives its own high-entropy API key.
+
+The server stores the key hash and fingerprint rather than the plaintext credential.
+
+Authenticated operations include heartbeat, telemetry submission, command polling, and command-result submission.
+
+The initial enrollment token is stored locally at:
+
+```text
+data/security/enrollment-token.txt
+```
+
+A remote agent uses that token only for initial enrollment.
+
+Administrators can rotate an agent API key or revoke an agent. Rotation invalidates the old key immediately.
+
+---
+
+## Optional Agent mTLS
+
+OpsForge supports optional certificate-bound agent identity.
+
+When enabled, remote agent requests can require both the valid API key and the client certificate associated with that agent.
+
+Example:
 
 ```powershell
 $env:OPSFORGE_AGENT_MTLS = '1'
 $env:OPSFORGE_LISTEN_URL = 'https://0.0.0.0:5443'
-# Configure the normal ASP.NET Core/Kestrel server certificate as appropriate.
 ```
 
-When mandatory agent mTLS is enabled, remote agent traffic cannot downgrade to plain LAN HTTP. Loopback HTTP remains available for the local development lab. Browser sessions do not require client certificates.
+Configure the normal ASP.NET Core/Kestrel server certificate separately.
 
-Remote agents also refuse non-loopback HTTP by default unless `allowInsecureRemoteHttp=true` is deliberately chosen for a disposable trusted lab.
+When mandatory agent mTLS is enabled, remote agent traffic cannot silently downgrade to plain LAN HTTP.
 
-## Add another Windows agent
+---
 
-Create a copyable remote-agent package from this same full source build:
+## Adding Another Windows Agent
+
+Build a copyable remote-agent package:
 
 ```powershell
 .\Publish-Remote-Agent.ps1
 ```
 
-This produces `dist\OpsForge.Agent`. Copy that folder to the remote Windows machine, edit `agent.json`, and on first run set:
+This creates:
+
+```text
+dist\OpsForge.Agent
+```
+
+Copy that folder to another Windows machine and configure its `agent.json`.
+
+For first enrollment:
 
 ```powershell
 $env:OPSFORGE_AGENT_ENROLLMENT_TOKEN = '<server enrollment token>'
 .\RUN-AGENT.cmd
 ```
 
-For a real multi-machine deployment, use an HTTPS OpsForge endpoint and appropriate host firewall/reverse-proxy controls.
+For multi-machine use, deploy the OpsForge server behind HTTPS and appropriate firewall/reverse-proxy controls.
 
-## Maintenance windows
+---
 
-Operators can schedule maintenance for:
+## Maintenance Windows
 
-- one enrolled agent, or
-- `*` for fleet-wide maintenance.
+Operators can schedule maintenance for one enrolled agent or the entire fleet.
 
-A window includes a name, reason, start, end, creator, creation time, cancellation state, and cancellation attribution. Active maintenance mutes matching incidents/signals in the operator counts and excludes matching time from availability/SLA calculations. The original diagnostic evidence remains in history.
+Maintenance records include the name, reason, start/end times, creator, creation time, cancellation state, and cancellation attribution.
 
-## Persistence and upgrades
+During active maintenance:
 
-The SQLite database is `data/opsforge.db`. Schema version is **7.0**.
+* Diagnostic evidence remains available
+* Matching incidents can be removed from actionable counts
+* Matching time is excluded from reliability/SLA calculations
 
-A clean v0.7 extraction initializes schema 7 directly. If you intentionally copy an existing v0.6 `data/opsforge.db` into this full build, initialization adds the v0.7 reliability/workflow tables and preserves the existing v0.6 records. **Copying an old database is optional; v0.7 does not need it.**
+This preserves operational history without penalizing planned maintenance.
 
-New schema 7 persistence includes:
+---
 
-- `telemetry_samples`
-- `maintenance_windows`
-- `incident_workflow`
+## Persistence
 
-alongside the complete earlier incident, command, inventory, status, authentication, session, and audit tables.
+OpsForge uses SQLite for local persistence.
 
-## Important files
+Default database:
 
-- `OpsForge.sln` — complete solution.
-- `OpsForge.Contracts/` — shared DTO/contracts project.
-- `OpsForge.Server/` — ASP.NET Core server, SQLite repository, correlation/topology/reliability engines, and complete browser UI.
-- `OpsForge.Agent/` — Windows telemetry/probe/command agent.
-- `OpsForge.DemoService/` — deliberately killable ASP.NET Core demo service.
-- `START-HERE.cmd` — build and launch the full local lab.
-- `STOP-OPSFORGE.cmd` — stop local OpsForge processes.
-- `Test-OpsForge.ps1` — full-build compiler/runtime smoke test.
-- `Publish-Remote-Agent.ps1` — publish a copyable framework-dependent remote Windows agent.
-- `FULL-BUILD.txt` — standalone package manifest.
-- `data/opsforge.db` — generated persistent schema-7 database; not shipped in the ZIP.
-- `data/security/` — generated bootstrap/enrollment secrets; not shipped in the ZIP.
-- `data/agents/` — generated local agent credentials/certificates; not shipped in the ZIP.
+```text
+data/opsforge.db
+```
 
-## Full-build smoke test
+The v0.7 schema persists telemetry samples, maintenance windows, incident workflow, incidents, commands, inventory, agent state, authentication, sessions, and audit events.
 
-From PowerShell:
+Generated databases and credentials are excluded from source control.
+
+The repository's `.gitignore` excludes:
+
+```text
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/security/
+data/agents/
+*.credentials.json
+*.pfx
+```
+
+---
+
+## Testing
+
+Run the full-build smoke test:
 
 ```powershell
 .\Test-OpsForge.ps1
 ```
 
-The test performs a real `dotnet build` and then exercises a clean schema-7 instance: bootstrap login/password replacement, RBAC denial, agent enrollment/authenticated telemetry, deterministic correlation, incident acknowledgement/ownership, maintenance suppression, reliability analytics/history, maintenance cancellation, inventory, and audit attribution.
+It performs a real `dotnet build` and exercises a clean temporary environment, including:
 
-The test uses a temporary data root and removes it afterward, so it does not overwrite your normal OpsForge database.
+* Compilation
+* Database initialization
+* Bootstrap login/password replacement
+* RBAC denial
+* Agent enrollment
+* Authenticated telemetry
+* Deterministic incident correlation
+* Incident acknowledgement/ownership
+* Maintenance suppression
+* Reliability/history analytics
+* Maintenance cancellation
+* Inventory
+* Audit attribution
 
-## Security scope
+The temporary test environment is removed afterward and does not overwrite the normal OpsForge database.
 
-OpsForge is a portfolio/lab platform with increasingly production-oriented controls, not a claim of a completed enterprise security product. It does not yet include SSO/OIDC/SAML, MFA, a centralized secrets vault, full PKI lifecycle/CRL/OCSP, signed automatic updates, HA database/session storage, or a hardened production installer. Use HTTPS, firewall restrictions, least-privilege accounts, and appropriate reverse-proxy/security controls for any network-accessible deployment.
+---
+
+## Build Manually
+
+```powershell
+dotnet restore
+dotnet build OpsForge.sln
+```
+
+Then use the included startup scripts for the integrated demonstration environment.
+
+---
+
+## Version History
+
+See the detailed [`CHANGELOG.md`](CHANGELOG.md).
+
+### v0.7.2
+
+Current version.
+
+* Fixed build issues discovered after the v0.7 reliability release
+* Preserves the complete v0.7 feature set
+* Ships as a standalone/full source build
+
+### v0.7.x
+
+Added reliability history, SLA/error-budget calculations, MTTR analytics, Executive Reliability dashboard, incident acknowledgement and ownership, maintenance windows, maintenance-aware SLA calculations, and expanded audit attribution.
+
+### v0.6.x
+
+Added named operator accounts, Viewer/Operator/Administrator RBAC, password hashing, sessions, CSRF protection, login throttling, persistent audit logging, and optional agent mTLS.
+
+### v0.5.x
+
+Added authenticated enrollment, per-agent API keys, inventory/status persistence, and key rotation/revocation.
+
+### v0.4.x
+
+Added multi-node topology, cross-machine dependencies, blast-radius analysis, and derivative-alert suppression.
+
+### v0.3.x
+
+Added deterministic multi-signal correlation, root-cause reasoning, confidence information, and Primary Incident reporting.
+
+### v0.2.x
+
+Added SQLite persistence, HTTP/TCP/DNS probes, Windows service monitoring, MTTR, timeline history, and Preview → Execute → Verify remediation.
+
+### v0.1.x
+
+Introduced the .NET 8 server, Windows telemetry agent, browser dashboard, constrained command channel, and demo service.
+
+---
+
+## Adding the Screenshot
+
+The README expects:
+
+```text
+docs/images/opsforge-dashboard.png
+```
+
+### Using GitHub
+
+1. Open the OpsForge repository.
+2. Choose **Add file → Create new file**.
+3. Enter `docs/images/.gitkeep`.
+4. Commit the file.
+5. Open `docs/images/`.
+6. Choose **Add file → Upload files**.
+7. Upload your screenshot as `opsforge-dashboard.png`.
+8. Commit the change.
+
+### Using Git Locally
+
+```powershell
+New-Item -ItemType Directory -Force docs\images
+```
+
+Copy the screenshot to:
+
+```text
+docs/images/opsforge-dashboard.png
+```
+
+Then:
+
+```bash
+git add README.md docs/images/opsforge-dashboard.png
+git commit -m "Add professional OpsForge README and dashboard screenshot"
+git push
+```
+
+Before publishing, make sure the screenshot contains no real API keys, enrollment tokens, passwords, private production hostnames/IPs, or user/customer information.
+
+A clean PNG around **1400–1800 px wide** works well.
+
+---
+
+## Security Scope
+
+OpsForge is a portfolio/lab platform with production-oriented controls.
+
+It does **not** currently claim to provide every control expected from a hardened enterprise monitoring platform.
+
+Not currently included:
+
+* SSO / OIDC / SAML
+* MFA
+* Centralized secrets-vault integration
+* Complete PKI lifecycle management
+* CRL / OCSP handling
+* Signed automatic updates
+* High-availability database/session storage
+* Hardened enterprise installer
+* Full production deployment automation
+
+For network-accessible deployment, use HTTPS, firewall restrictions, least-privilege service accounts, appropriate reverse-proxy controls, secure certificate management, protected secrets, and appropriate host hardening.
+
+---
+
+## Project Status
+
+OpsForge is actively developed as a portfolio and systems-engineering project.
+
+It demonstrates practical work across C#/.NET 8, ASP.NET Core, distributed-agent architecture, Windows monitoring, incident-response workflows, observability/reliability concepts, SQLite, authentication/RBAC, API-key lifecycle management, security auditing, network probes, topology modeling, automated smoke testing, and release management.
+
+---
+
+## License
+
+OpsForge is released under the [MIT License](LICENSE.txt).
+
+---
+
+## Author
+
+**Daniel Fuhr**
+
+* GitHub: [github.com/fuhrdan](https://github.com/fuhrdan)
+* LinkedIn: [linkedin.com/in/danielfuhr](https://www.linkedin.com/in/danielfuhr/)
+* Portfolio: [lakehousesoftware.com](https://lakehousesoftware.com/)
+
+---
+
+## Why This Project Matters
+
+OpsForge demonstrates the kind of systems work that sits between software development and IT operations.
+
+Rather than building only a dashboard or only a monitoring agent, the project carries an operational event through **telemetry, authentication, dependency modeling, correlation, human ownership, remediation, verification, historical persistence, auditability, and reliability measurement**.
+
+That end-to-end operational lifecycle is the core of the project.
