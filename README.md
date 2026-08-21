@@ -6,7 +6,7 @@
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-v0.7.2-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.7.3-blue)](CHANGELOG.md)
 [![OpsForge CI](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml)
 
 **Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**
@@ -508,13 +508,20 @@ Then use the included startup scripts for the integrated demonstration environme
 
 See the detailed [`CHANGELOG.md`](CHANGELOG.md).
 
-### v0.7.2
+### v0.7.3
 
 Current version.
 
-* Fixed build issues discovered after the v0.7 reliability release
-* Preserves the complete v0.7 feature set
-* Ships as a standalone/full source build
+- Added Windows GitHub Actions CI
+- Automated .NET 8 Release build and integration smoke testing
+- Fixed PowerShell 5.1 incident-array enumeration in the smoke test
+- Added professional project documentation and dashboard presentation
+
+### v0.7.2
+
+- Fixed build issues discovered after the v0.7 reliability release
+- Preserves the complete v0.7 feature set
+- Ships as a standalone/full source build
 
 ### v0.7.x
 
@@ -543,43 +550,6 @@ Added SQLite persistence, HTTP/TCP/DNS probes, Windows service monitoring, MTTR,
 ### v0.1.x
 
 Introduced the .NET 8 server, Windows telemetry agent, browser dashboard, constrained command channel, and demo service.
-
----
-
-### Using GitHub
-
-1. Open the OpsForge repository.
-2. Choose **Add file → Create new file**.
-3. Enter `docs/images/.gitkeep`.
-4. Commit the file.
-5. Open `docs/images/`.
-6. Choose **Add file → Upload files**.
-7. Upload your screenshot as `opsforge-dashboard.png`.
-8. Commit the change.
-
-### Using Git Locally
-
-```powershell
-New-Item -ItemType Directory -Force docs\images
-```
-
-Copy the screenshot to:
-
-```text
-docs/images/opsforge-dashboard.png
-```
-
-Then:
-
-```bash
-git add README.md docs/images/opsforge-dashboard.png
-git commit -m "Add professional OpsForge README and dashboard screenshot"
-git push
-```
-
-Before publishing, make sure the screenshot contains no real API keys, enrollment tokens, passwords, private production hostnames/IPs, or user/customer information.
-
-A clean PNG around **1400–1800 px wide** works well.
 
 ---
 
