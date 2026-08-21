@@ -1,0 +1,41 @@
+name: OpsForge CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-smoke-test:
+    name: Build and smoke test
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Show .NET environment
+        run: dotnet --info
+
+      - name: Restore dependencies
+        run: dotnet restore .\OpsForge.sln
+
+      - name: Build solution
+        run: dotnet build .\OpsForge.sln --configuration Release --no-restore
+
+      - name: Run OpsForge integration smoke test
+        shell: powershell
+        run: .\Test-OpsForge.ps1
