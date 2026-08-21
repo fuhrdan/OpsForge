@@ -91,8 +91,12 @@ try {
   # Incident workflow: acknowledge and take ownership.
   Invoke-RestMethod -Method Post -Uri "$base/api/primary-incidents/$($primary.id)/acknowledge" -Headers $operatorHeaders -WebSession $operatorSession -ContentType 'application/json' -Body (@{note='Smoke-test acknowledgement'}|ConvertTo-Json) | Out-Null
   Invoke-RestMethod -Method Post -Uri "$base/api/primary-incidents/$($primary.id)/assign" -Headers $operatorHeaders -WebSession $operatorSession -ContentType 'application/json' -Body (@{ownerUsername='operator01';note='Taking smoke-test ownership'}|ConvertTo-Json) | Out-Null
-  $updated=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession) | Where-Object id -eq $primary.id
-  if(-not $updated.acknowledged -or $updated.ownerUsername -ne 'operator01'){ throw 'Incident acknowledgement/ownership did not persist.' }
+  $updatedRows=Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession
+  $updated=$updatedRows | Where-Object { $_.id -eq $primary.id } | Select-Object -First 1
+  if(-not $updated){ throw "Primary incident $($primary.id) was missing during acknowledgement/ownership readback." }
+  if(-not $updated.acknowledged -or $updated.ownerUsername -ne 'operator01'){
+    throw "Incident acknowledgement/ownership did not persist. acknowledged=$($updated.acknowledged) owner=$($updated.ownerUsername)"
+  }
 
   # Maintenance window suppresses the active incident and is excluded from reliability accounting.
   $start=(Get-Date).ToUniversalTime().AddMinutes(-1)
@@ -100,7 +104,9 @@ try {
   $maintenanceBody=@{name='Smoke maintenance';agentId='smoke-01';reason='v0.7 test';startUtc=$start.ToString('o');endUtc=$end.ToString('o')}|ConvertTo-Json
   $maintenance=Invoke-RestMethod -Method Post -Uri "$base/api/maintenance" -Headers $operatorHeaders -WebSession $operatorSession -ContentType 'application/json' -Body $maintenanceBody
   if(-not $maintenance.activeNow){ throw 'Created maintenance window was not active.' }
-  $muted=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession) | Where-Object id -eq $primary.id
+  $mutedRows=Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession
+  $muted=$mutedRows | Where-Object { $_.id -eq $primary.id } | Select-Object -First 1
+  if(-not $muted){ throw "Primary incident $($primary.id) was missing during maintenance readback." }
   if(-not $muted.maintenanceSuppressed){ throw 'Active primary incident was not maintenance-muted.' }
 
   $viewerMutationDenied=$false
