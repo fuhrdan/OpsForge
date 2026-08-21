@@ -546,14 +546,6 @@ Introduced the .NET 8 server, Windows telemetry agent, browser dashboard, constr
 
 ---
 
-## Adding the Screenshot
-
-The README expects:
-
-```text
-docs/images/opsforge-dashboard.png
-```
-
 ### Using GitHub
 
 1. Open the OpsForge repository.
