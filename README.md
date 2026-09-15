@@ -26,6 +26,23 @@ The project models the operational lifecycle around a failure:
 OpsForge is a portfolio/lab platform with increasingly production-oriented controls. It is not presented as a finished enterprise monitoring or security product.
 
 ---
+## Engineering Decisions
+
+OpsForge is designed around explicit operational invariants rather than treating monitoring, remediation, and reliability as independent features.
+
+| Decision                                                                                                          | Why it matters                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [**ADR-0001 — Preview → Execute → Verify remediation**](docs/adr/0001-preview-execute-verify-remediation.md)      | A successful command does not prove service recovery. Later monitoring evidence must verify the outcome.                                           |
+| [**ADR-0002 — Deterministic incident correlation**](docs/adr/0002-deterministic-incident-correlation.md)          | Related process, TCP, HTTP, and dependency failures can be represented as one explainable Primary Incident without discarding derivative evidence. |
+| [**ADR-0003 — Evidence-based reliability accounting**](docs/adr/0003-reliability-accounting-missing-telemetry.md) | Missing telemetry is not silently counted as healthy uptime, preventing optimistic SLA and error-budget reporting.                                 |
+
+These decisions reflect three recurring principles:
+
+* **Evidence over assumption** — recovery and availability must be supported by observed telemetry.
+* **Explainability over opaque automation** — incident correlation and remediation decisions should be reproducible and auditable.
+* **Human control over destructive actions** — diagnosis and remediation execution remain separate operational boundaries.
+
+The ADRs document decisions already implemented by OpsForge rather than aspirational architecture.
 
 ## Screenshot
 
