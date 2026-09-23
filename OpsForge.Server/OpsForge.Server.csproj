@@ -6,4 +6,7 @@
     <ProjectReference Include="..\OpsForge.Contracts\OpsForge.Contracts.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <Content Update="correlation-rules.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

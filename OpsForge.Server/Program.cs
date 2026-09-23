@@ -5,6 +5,7 @@ using OpsForge.Contracts;
 using OpsForge.Server;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile(Path.Combine(AppContext.BaseDirectory, "correlation-rules.json"), optional: false, reloadOnChange: false);
 var mtlsConfigured = IsTruthy(Environment.GetEnvironmentVariable("OPSFORGE_AGENT_MTLS"));
 if (mtlsConfigured)
 {
@@ -23,13 +24,16 @@ builder.Services.AddSingleton<SqliteRepository>();
 builder.Services.AddSingleton<SecuritySecrets>();
 builder.Services.AddSingleton<OperatorIdentity>();
 builder.Services.AddSingleton<AgentRegistry>();
+var correlationOptions = builder.Configuration.GetSection("Correlation").Get<CorrelationOptions>() ?? new CorrelationOptions();
+correlationOptions.Validate();
+builder.Services.AddSingleton(correlationOptions);
 builder.Services.AddSingleton<TelemetryStore>();
 builder.Services.AddSingleton<ReliabilityService>();
 
 var app = builder.Build();
 var secrets = app.Services.GetRequiredService<SecuritySecrets>();
 var identity = app.Services.GetRequiredService<OperatorIdentity>();
-Console.WriteLine($"OpsForge v0.7.2 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
+Console.WriteLine($"OpsForge v0.8.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
 Console.WriteLine(File.Exists(secrets.BootstrapAdminPath)
     ? $"Initial administrator credentials (first run only): {secrets.BootstrapAdminPath}"
     : "Initial administrator bootstrap credentials have already been consumed.");
@@ -52,9 +56,9 @@ app.MapGet("/api/health", (SqliteRepository repository) => Results.Ok(new
 {
     ok = true,
     service = "OpsForge Server",
-    version = "0.7.2",
+    version = "0.8.0",
     persistence = repository.DatabaseLabel,
-    correlationEngine = "deterministic-v2",
+    correlationEngine = "configurable-window-v3",
     topologyEngine = "dynamic-multinode-v1",
     reliabilityEngine = "historical-sla-v1",
     securityModel = "rbac-sessions-agent-mtls-v1",
@@ -208,8 +212,10 @@ app.MapPost("/api/agents/heartbeat", (HttpContext context, AgentHeartbeatRequest
 {
     if (string.IsNullOrWhiteSpace(heartbeat.AgentId) || string.IsNullOrWhiteSpace(heartbeat.MachineName)) return Results.BadRequest(new { error = "AgentId and MachineName are required." });
     if (!AgentAuthorized(context, heartbeat.AgentId, security, registry)) return Results.Unauthorized();
+    if (heartbeat.TimestampUtc == default || (DateTimeOffset.UtcNow - heartbeat.TimestampUtc).Duration() > TimeSpan.FromMinutes(5))
+        return Results.BadRequest(new { error = "Heartbeat timestamp must be within five minutes of server time." });
+    if (!store.RecordHeartbeat(heartbeat)) return Results.Ok(new { accepted = false, outOfOrder = true, serverTimeUtc = DateTimeOffset.UtcNow });
     registry.RecordHeartbeat(heartbeat, RemoteIp(context));
-    store.RecordHeartbeat(heartbeat);
     return Results.Ok(new { accepted = true, serverTimeUtc = DateTimeOffset.UtcNow });
 });
 

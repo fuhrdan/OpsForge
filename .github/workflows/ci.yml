@@ -36,6 +36,9 @@ jobs:
       - name: Build solution
         run: dotnet build .\OpsForge.sln --configuration Release --no-restore
 
+      - name: Check deterministic correlation rules
+        run: dotnet run --project .\OpsForge.CorrelationChecks\OpsForge.CorrelationChecks.csproj --configuration Release
+
       - name: Run OpsForge integration smoke test
         shell: powershell
         run: .\Test-OpsForge.ps1

@@ -6,17 +6,25 @@ namespace OpsForge.Server;
 public sealed class TelemetryStore
 {
     private readonly ConcurrentDictionary<string, AgentState> _agents = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, object> _agentLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, CommandRecord> _commands = new();
     private readonly ConcurrentDictionary<Guid, PreviewRecord> _previews = new();
     private readonly SqliteRepository _repository;
+    private readonly CorrelationOptions _correlation;
 
-    public TelemetryStore(SqliteRepository repository)
+    public TelemetryStore(SqliteRepository repository, CorrelationOptions correlation)
     {
         _repository = repository;
+        _correlation = correlation;
     }
 
-    public void RecordHeartbeat(AgentHeartbeatRequest heartbeat)
+    public bool RecordHeartbeat(AgentHeartbeatRequest heartbeat)
     {
+        // Serialize each agent's ingestion so delayed and duplicate snapshots cannot undo newer state.
+        lock (_agentLocks.GetOrAdd(heartbeat.AgentId, _ => new object()))
+        {
+        if (_agents.TryGetValue(heartbeat.AgentId, out var previous) &&
+            heartbeat.TimestampUtc <= previous.Heartbeat.TimestampUtc) return false;
         var now = DateTimeOffset.UtcNow;
         _agents[heartbeat.AgentId] = new AgentState(heartbeat, now);
         _repository.RecordTelemetrySample(heartbeat, now);
@@ -129,6 +137,8 @@ public sealed class TelemetryStore
 
         EvaluatePrimaryIncident(heartbeat, now);
         VerifyCompletedCommands(heartbeat, now);
+        return true;
+        }
     }
 
     public IReadOnlyList<AgentSnapshotDto> GetAgents()
@@ -478,9 +488,18 @@ public sealed class TelemetryStore
 
     private void EvaluatePrimaryIncident(AgentHeartbeatRequest heartbeat, DateTimeOffset now)
     {
-        var correlationKey = $"{heartbeat.AgentId}:primary:demo-application";
+        foreach (var rule in _correlation.Rules)
+        {
+            EvaluateRule(heartbeat, rule, now);
+        }
+    }
+
+    private void EvaluateRule(AgentHeartbeatRequest heartbeat, CorrelationRule rule, DateTimeOffset now)
+    {
+        var correlationKey = $"{heartbeat.AgentId}:primary:{rule.Id}";
         var existing = _repository.GetActivePrimaryIncident(correlationKey);
-        var candidate = CorrelationEngine.EvaluateDemoApplication(heartbeat, now);
+        var evaluation = CorrelationEngine.Evaluate(heartbeat, rule);
+        var candidate = evaluation.Candidate;
 
         if (candidate is not null)
         {
@@ -533,11 +552,12 @@ public sealed class TelemetryStore
             return;
         }
 
-        if (existing is not null)
+        // Missing or stale measurements are unknown, not recovery evidence.
+        if (existing is not null && evaluation.Complete)
         {
-            var failedSignalCount = CountDemoFailures(heartbeat);
+            var failedSignalCount = evaluation.FailureCount;
             var resolution = failedSignalCount == 0
-                ? "Fresh telemetry confirms the process, TCP listener, and HTTP health endpoint are healthy."
+                ? "Fresh telemetry confirms that all configured observations are healthy."
                 : $"The correlation cleared because only {failedSignalCount} failure signal remains; any remaining low-level signal stays open for troubleshooting.";
 
             _repository.ResolvePrimaryIncident(existing.Id, now, resolution);
@@ -551,20 +571,6 @@ public sealed class TelemetryStore
                 $"{resolution} Correlated MTTR {FormatDuration(duration)}.",
                 now);
         }
-    }
-
-    private static int CountDemoFailures(AgentHeartbeatRequest heartbeat)
-    {
-        var process = heartbeat.MonitoredProcesses.FirstOrDefault(p =>
-            string.Equals(p.Name, "OpsForge.DemoService", StringComparison.OrdinalIgnoreCase));
-        var http = heartbeat.Probes.FirstOrDefault(p =>
-            string.Equals(p.Id, "demo-http", StringComparison.OrdinalIgnoreCase));
-        var tcp = heartbeat.Probes.FirstOrDefault(p =>
-            string.Equals(p.Id, "demo-tcp", StringComparison.OrdinalIgnoreCase));
-
-        return (process is not null && !process.Running ? 1 : 0) +
-               (http is not null && !http.Success ? 1 : 0) +
-               (tcp is not null && !tcp.Success ? 1 : 0);
     }
 
     private static string PrimarySignature(PrimaryIncidentDto incident)

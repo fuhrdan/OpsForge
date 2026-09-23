@@ -17,7 +17,7 @@ dotnet OpsForge.Agent.dll
 endlocal
 '@ | Set-Content (Join-Path $out 'RUN-AGENT.cmd') -Encoding ASCII
 @'
-OpsForge Remote Agent v0.7.2
+OpsForge Remote Agent v0.8.0
 
 1. Edit agent.json. Give the agent a unique agentId and set serverUrl to your HTTPS OpsForge server.
 2. On first run only, set OPSFORGE_AGENT_ENROLLMENT_TOKEN in the shell to the server enrollment token.

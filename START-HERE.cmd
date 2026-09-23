@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 echo.
 echo ============================================================
-echo  OPSFORGE v0.7.2 - RELIABILITY COMMAND CENTER - FULL BUILD
+echo  OPSFORGE v0.8.0 - RELIABILITY COMMAND CENTER - FULL BUILD
 echo ============================================================
 echo.
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0Start-OpsForge.ps1"

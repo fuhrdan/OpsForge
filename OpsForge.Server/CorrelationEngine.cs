@@ -2,103 +2,131 @@ using OpsForge.Contracts;
 
 namespace OpsForge.Server;
 
+// Each rule explicitly names a dependency group; proximity alone never joins unrelated alerts.
+public sealed class CorrelationRule
+{
+    public string Id { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Process { get; set; }
+    public string? Service { get; set; }
+    public List<string> ProbeIds { get; set; } = new();
+    public int WindowSeconds { get; set; } = 30;
+    public int MinimumFailures { get; set; } = 2;
+}
+
+public sealed class CorrelationOptions
+{
+    public List<CorrelationRule> Rules { get; set; } = new();
+
+    public void Validate()
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var selectors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rule in Rules)
+        {
+            if (string.IsNullOrWhiteSpace(rule.Id) || rule.Id.Contains(':') || !ids.Add(rule.Id) ||
+                string.IsNullOrWhiteSpace(rule.Title) || rule.WindowSeconds is < 1 or > 3600 ||
+                rule.MinimumFailures < 2)
+                throw new InvalidOperationException($"Invalid or duplicate correlation rule: {rule.Id}");
+
+            var names = new List<string>();
+            if (!string.IsNullOrWhiteSpace(rule.Process)) names.Add($"process:{rule.Process}");
+            if (!string.IsNullOrWhiteSpace(rule.Service)) names.Add($"windows-service:{rule.Service}");
+            names.AddRange(rule.ProbeIds.Select(id => $"probe:{id}"));
+            if (names.Count < rule.MinimumFailures || names.Any(name => name.EndsWith(':')) ||
+                names.Any(name => !selectors.Add(name)))
+                throw new InvalidOperationException($"Rule {rule.Id} has missing, repeated, or overlapping signal selectors.");
+        }
+    }
+}
+
+public sealed record CorrelationEvaluation(PrimaryIncidentDto? Candidate, bool Complete, int FailureCount);
+
 public static class CorrelationEngine
 {
-    public static PrimaryIncidentDto? EvaluateDemoApplication(AgentHeartbeatRequest heartbeat, DateTimeOffset now)
+    public static CorrelationEvaluation Evaluate(AgentHeartbeatRequest heartbeat, CorrelationRule rule)
     {
-        var process = heartbeat.MonitoredProcesses.FirstOrDefault(p =>
-            string.Equals(p.Name, "OpsForge.DemoService", StringComparison.OrdinalIgnoreCase));
-        var http = heartbeat.Probes.FirstOrDefault(p =>
-            string.Equals(p.Id, "demo-http", StringComparison.OrdinalIgnoreCase));
-        var tcp = heartbeat.Probes.FirstOrDefault(p =>
-            string.Equals(p.Id, "demo-tcp", StringComparison.OrdinalIgnoreCase));
+        var observed = new List<(CorrelatedSignalDto Signal, DateTimeOffset Time, bool Failed)>();
+        var eventTime = heartbeat.TimestampUtc;
+        if (eventTime == default) return new(null, false, 0);
+        var window = TimeSpan.FromSeconds(rule.WindowSeconds);
 
-        var processFailed = process is not null && !process.Running;
-        var httpFailed = http is not null && !http.Success;
-        var tcpFailed = tcp is not null && !tcp.Success;
-        var failureCount = (processFailed ? 1 : 0) + (httpFailed ? 1 : 0) + (tcpFailed ? 1 : 0);
-
-        // Correlate only when at least two independent observations agree.
-        if (failureCount < 2)
+        if (!string.IsNullOrWhiteSpace(rule.Process))
         {
-            return null;
+            var process = heartbeat.MonitoredProcesses
+                .Where(p => string.Equals(p.Name, rule.Process, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(p => p.Running).ThenBy(p => p.ProcessId).FirstOrDefault();
+            if (process is not null)
+                observed.Add((Signal(heartbeat.AgentId, "process", process.Name, "Process", !process.Running,
+                    $"Process {process.Name} is not running."), eventTime, !process.Running));
         }
 
-        var signals = new List<CorrelatedSignalDto>();
-        if (processFailed && process is not null)
+        if (!string.IsNullOrWhiteSpace(rule.Service))
         {
-            signals.Add(new CorrelatedSignalDto
+            var service = heartbeat.MonitoredServices
+                .Where(s => string.Equals(s.Name, rule.Service, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(s => s.Exists && string.Equals(s.Status, "Running", StringComparison.OrdinalIgnoreCase))
+                .ThenBy(s => s.Status, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            if (service is not null)
             {
-                SignalKey = $"{heartbeat.AgentId}:process:OpsForge.DemoService",
-                SignalType = "Process",
-                Target = "OpsForge.DemoService",
-                State = "Failed",
-                Role = "Root-cause candidate",
-                Evidence = "The monitored OpsForge.DemoService process is not running."
-            });
+                var failed = !service.Exists || !string.Equals(service.Status, "Running", StringComparison.OrdinalIgnoreCase);
+                observed.Add((Signal(heartbeat.AgentId, "windows-service", service.Name, "Service", failed,
+                    $"Service {service.Name} reports {service.Status}."), eventTime, failed));
+            }
         }
 
-        if (tcpFailed && tcp is not null)
+        foreach (var id in rule.ProbeIds)
         {
-            signals.Add(new CorrelatedSignalDto
-            {
-                SignalKey = $"{heartbeat.AgentId}:probe:demo-tcp",
-                SignalType = "TCP",
-                Target = tcp.Target,
-                State = "Failed",
-                Role = processFailed ? "Supporting evidence" : "Root-cause candidate",
-                Evidence = $"TCP listener check failed after {tcp.LatencyMs} ms. {tcp.Detail}"
-            });
+            var probe = heartbeat.Probes
+                .Where(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(p => p.CheckedUtc).ThenBy(p => p.Success)
+                .ThenBy(p => p.Target, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+            // Delayed probes cannot prove either an outage or a recovery.
+            if (probe is null || probe.CheckedUtc == default || (eventTime - probe.CheckedUtc).Duration() > window)
+                continue;
+            observed.Add((Signal(heartbeat.AgentId, "probe", probe.Id, probe.Type.ToUpperInvariant(), !probe.Success,
+                $"{probe.Type} probe {probe.Target}: {probe.Detail}"), probe.CheckedUtc, !probe.Success));
         }
 
-        if (httpFailed && http is not null)
-        {
-            signals.Add(new CorrelatedSignalDto
-            {
-                SignalKey = $"{heartbeat.AgentId}:probe:demo-http",
-                SignalType = "HTTP",
-                Target = http.Target,
-                State = "Failed",
-                Role = "Impact evidence",
-                Evidence = $"HTTP health check failed after {http.LatencyMs} ms. {http.Detail}"
-            });
-        }
+        var expected = rule.ProbeIds.Count + (string.IsNullOrWhiteSpace(rule.Process) ? 0 : 1) +
+                       (string.IsNullOrWhiteSpace(rule.Service) ? 0 : 1);
+        var complete = observed.Count == expected;
+        var failures = observed.Where(item => item.Failed).ToList();
+        if (failures.Count < rule.MinimumFailures ||
+            failures.Max(item => item.Time) - failures.Min(item => item.Time) > window)
+            return new(null, complete, failures.Count);
 
-        string rootCause;
-        double confidenceScore;
-        if (processFailed)
-        {
-            rootCause = "OpsForge.DemoService is not running; downstream TCP and HTTP failures are consistent with the stopped application process.";
-            confidenceScore = failureCount == 3 ? 0.98 : 0.92;
-        }
-        else if (tcpFailed && httpFailed)
-        {
-            rootCause = "The application listener on TCP/5091 is unavailable while the process still appears present; inspect binding, startup state, or an internally hung process.";
-            confidenceScore = 0.80;
-        }
-        else
-        {
-            rootCause = "Multiple application availability signals failed together, but the current telemetry does not isolate one component with high confidence.";
-            confidenceScore = 0.70;
-        }
+        failures.Sort((a, b) => StringComparer.OrdinalIgnoreCase.Compare(a.Signal.SignalKey, b.Signal.SignalKey));
+        var root = failures.FirstOrDefault(item => item.Signal.SignalType is "Process" or "Service");
+        if (root.Signal is null) root = failures[0];
+        foreach (var item in failures)
+            item.Signal.Role = ReferenceEquals(item.Signal, root.Signal) ? "Root-cause candidate" : "Supporting evidence";
 
-        var confidence = confidenceScore >= 0.90 ? "High" : confidenceScore >= 0.75 ? "Medium" : "Low";
-        var failedNames = string.Join(", ", signals.Select(s => s.SignalType));
-
-        return new PrimaryIncidentDto
+        var score = root.Signal.SignalType is "Process" or "Service" ? 0.90 : 0.75;
+        if (failures.Count == expected) score = Math.Min(0.98, score + 0.05);
+        return new(new PrimaryIncidentDto
         {
-            CorrelationKey = $"{heartbeat.AgentId}:primary:demo-application",
+            CorrelationKey = $"{heartbeat.AgentId}:primary:{rule.Id}",
             AgentId = heartbeat.AgentId,
             Severity = "critical",
-            Title = $"Demo application unavailable on {heartbeat.MachineName}",
-            Summary = $"OpsForge correlated {failureCount} failing observations ({failedNames}) into one application outage instead of treating them as independent incidents.",
-            ProbableRootCause = rootCause,
-            BlastRadius = "Demo Web Application · HTTP /health · TCP/5091",
-            Confidence = confidence,
-            ConfidenceScore = confidenceScore,
-            Signals = signals,
-            LastSeenUtc = now,
+            Title = $"{rule.Title} on {heartbeat.MachineName}",
+            Summary = $"{failures.Count} related failures within {rule.WindowSeconds} seconds: {string.Join(", ", failures.Select(item => item.Signal.SignalType))}.",
+            ProbableRootCause = $"{root.Signal.SignalType} {root.Signal.Target} failed; other configured observations support this diagnosis. Verify the dependency before remediation.",
+            BlastRadius = string.Join(" · ", failures.Select(item => item.Signal.Target).Distinct(StringComparer.OrdinalIgnoreCase)),
+            Confidence = score >= 0.90 ? "High" : "Medium",
+            ConfidenceScore = score,
+            Signals = failures.Select(item => item.Signal).ToList(),
+            LastSeenUtc = eventTime,
             Active = true
-        };
+        }, complete, failures.Count);
     }
+
+    private static CorrelatedSignalDto Signal(string agent, string kind, string target, string type, bool failed, string evidence) => new()
+    {
+        SignalKey = $"{agent}:{kind}:{target}",
+        SignalType = type,
+        Target = target,
+        State = failed ? "Failed" : "Healthy",
+        Evidence = evidence
+    };
 }

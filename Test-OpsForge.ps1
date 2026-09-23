@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Write-Host 'OpsForge v0.7.2 full-build smoke test' -ForegroundColor Cyan
+Write-Host 'OpsForge v0.8.0 full-build smoke test' -ForegroundColor Cyan
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'dotnet SDK not found; build portion cannot run.' -ForegroundColor Yellow; exit 2 }
 
 dotnet build .\OpsForge.sln
@@ -21,7 +21,7 @@ try {
     catch { Start-Sleep -Milliseconds 500 }
   }
   if(-not $ready){ throw 'OpsForge.Server did not become ready.' }
-  if($health.version -ne '0.7.2' -or $health.schemaVersion -ne '7.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
+  if($health.version -ne '0.8.0' -or $health.schemaVersion -ne '7.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
 
   # Bootstrap administrator and remove the temporary credential file.
   $bootstrapPath=Join-Path $testRoot 'data\security\admin-bootstrap.txt'
@@ -87,6 +87,7 @@ try {
   $primaries=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession)
   $primary=$primaries | Where-Object { $_.active -eq $true -and $_.agentId -eq 'smoke-01' } | Select-Object -First 1
   if(-not $primary){ throw 'Correlated primary incident was not created.' }
+  if($primary.correlationKey -ne 'smoke-01:primary:demo-application' -or @($primary.signals).Count -ne 3){ throw 'Unexpected correlation key or evidence.' }
 
   # Incident workflow: acknowledge and take ownership.
   Invoke-RestMethod -Method Post -Uri "$base/api/primary-incidents/$($primary.id)/acknowledge" -Headers $operatorHeaders -WebSession $operatorSession -ContentType 'application/json' -Body (@{note='Smoke-test acknowledgement'}|ConvertTo-Json) | Out-Null

@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.0
+
+- Correlate explicit groups of process, Windows service, and probe observations with configurable time windows and failure thresholds.
+- Keep previous incidents open when measurements are missing or stale; ignore delayed or duplicate heartbeats.
+- Add deterministic correlation checks and a loopback-only synthetic multi-agent simulator.
+- Preserve the existing database schema and operator workflows.
+
+## v0.7.3
+
+- Added Windows CI, integration smoke testing, and portfolio documentation.
+- Fixed PowerShell 5.1 smoke-test array handling and incident acknowledgement persistence.
+
 ## v0.7.2
 
 - Fixed `CS0104` in `OpsForge.Agent/SystemMetricsCollector.cs` by explicitly catching `System.TimeoutException` instead of the ambiguous `TimeoutException` name introduced by the `System.ServiceProcess` reference.

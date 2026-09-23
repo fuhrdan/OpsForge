@@ -184,7 +184,7 @@ public sealed class OperatorIdentity
         _repository.CreateOperatorUser("admin", "OpsForge Administrator", OpsForgeRoles.Administrator, salt, hash, PasswordIterations, true, now);
         Directory.CreateDirectory(Path.GetDirectoryName(_secrets.BootstrapAdminPath)!);
         File.WriteAllText(_secrets.BootstrapAdminPath,
-            $"OpsForge v0.7.2 bootstrap administrator{Environment.NewLine}" +
+            $"OpsForge v0.8.0 bootstrap administrator{Environment.NewLine}" +
             $"Username: admin{Environment.NewLine}" +
             $"Temporary password: {password}{Environment.NewLine}" +
             $"You must change this password after first login.{Environment.NewLine}");

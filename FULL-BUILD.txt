@@ -1,4 +1,4 @@
-OPSFORGE v0.7.2 - FULL BUILD MANIFEST
+OPSFORGE v0.8.0 - FULL BUILD MANIFEST
 ======================================
 
 This archive is a complete standalone OpsForge source release.

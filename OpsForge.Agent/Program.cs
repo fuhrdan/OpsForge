@@ -8,12 +8,12 @@ namespace OpsForge.Agent;
 
 internal static class Program
 {
-    private const string Version = "0.7.2";
+    private const string Version = "0.8.0";
 
     public static async Task Main()
     {
-        Console.Title = "OpsForge Agent v0.7.2";
-        Console.WriteLine("OpsForge Agent v0.7.2");
+        Console.Title = "OpsForge Agent v0.8.0";
+        Console.WriteLine("OpsForge Agent v0.8.0");
         Console.WriteLine("Authenticated telemetry, optional mTLS identity, Windows services, HTTP/TCP/DNS probes, and constrained commands.");
         Console.WriteLine();
 

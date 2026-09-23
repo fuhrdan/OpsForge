@@ -1,0 +1,14 @@
+{
+  "Correlation": {
+    "Rules": [
+      {
+        "Id": "demo-application",
+        "Title": "Demo application unavailable",
+        "Process": "OpsForge.DemoService",
+        "ProbeIds": ["demo-tcp", "demo-http"],
+        "WindowSeconds": 30,
+        "MinimumFailures": 2
+      }
+    ]
+  }
+}

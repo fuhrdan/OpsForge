@@ -6,7 +6,7 @@
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-v0.7.3-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.8.0-blue)](CHANGELOG.md)
 [![OpsForge CI](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml)
 
 **Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**
@@ -525,9 +525,34 @@ Then use the included startup scripts for the integrated demonstration environme
 
 See the detailed [`CHANGELOG.md`](CHANGELOG.md).
 
-### v0.7.3
+### v0.8.0
 
-Current version.
+Configurable correlation rules, event-time windows, stale-evidence handling, deterministic rule checks, and a synthetic multi-agent ChaosLab.
+
+Configure relationships in `OpsForge.Server/correlation-rules.json`, then rebuild and restart the server. Each rule names a process, a Windows service, or probe IDs that belong to one failure domain. At least `MinimumFailures` distinct configured observations must fail within `WindowSeconds`; an unrelated probe never joins the group merely because it failed at the same time. Rule IDs and selectors must be unique. For example:
+
+```json
+{
+  "Id": "payments",
+  "Title": "Payments unavailable",
+  "Process": "Payments.Worker",
+  "ProbeIds": ["payments-tcp", "payments-http"],
+  "WindowSeconds": 30,
+  "MinimumFailures": 2
+}
+```
+
+Add this object to the `Correlation.Rules` array and configure the agent to collect matching process and probe IDs. A rule may use `Service` instead of `Process`. The default demo rule remains in the file. A complete healthy or single-failure snapshot closes a prior primary incident; missing or stale observations leave it open. Incoming duplicate or older heartbeats are ignored. The current rule engine correlates within each agent and rule; it does not yet form one cross-agent root-cause incident or buffer late events for replay.
+
+With OpsForge running locally, simulate ten agents, three related node failures, an independent memory warning, and recovery:
+
+```powershell
+.\Start-OpsForge-ChaosLab.ps1 -Scenario CascadingFailure -Agents 10 -HoldSeconds 20
+```
+
+ChaosLab enrolls synthetic agents through the local authenticated API; it does not stop services or probe real systems. Each run creates new synthetic agent IDs, which later appear offline until retention or cleanup. Run the focused checks with `dotnet run --project .\OpsForge.CorrelationChecks\OpsForge.CorrelationChecks.csproj` and the Windows smoke test with `.\TEST-OPSFORGE.cmd`. The CMD wrapper invokes PowerShell with a bypass limited to that process, as `START-HERE.cmd` does.
+
+### v0.7.3
 
 - Added Windows GitHub Actions CI
 - Automated .NET 8 Release build and integration smoke testing
