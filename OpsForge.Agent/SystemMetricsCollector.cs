@@ -145,7 +145,11 @@ internal sealed class SystemMetricsCollector : IDisposable
     private static List<NetworkAdapterMetric> GetNetworkAdapters()
     {
         var metrics = new List<NetworkAdapterMetric>();
-        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        NetworkInterface[] adapters;
+        try { adapters = NetworkInterface.GetAllNetworkInterfaces(); }
+        catch (NetworkInformationException) { return metrics; }
+        catch (UnauthorizedAccessException) { return metrics; }
+        foreach (var nic in adapters)
         {
             if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
             {

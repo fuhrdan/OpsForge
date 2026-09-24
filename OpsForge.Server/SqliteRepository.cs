@@ -30,7 +30,7 @@ public sealed class SqliteRepository
     }
 
     public string DatabaseLabel => "data/opsforge.db";
-    public string SchemaVersion => "7.0";
+    public string SchemaVersion => "8.0";
 
     public IncidentDto? GetActiveIncident(string ruleKey)
     {
@@ -289,7 +289,7 @@ public sealed class SqliteRepository
             command.CommandText = """
                 SELECT id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                        blast_radius, confidence, confidence_score, signals_json,
-                       first_seen_utc, last_seen_utc, resolved_utc, active
+                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id
                 FROM primary_incidents
                 WHERE correlation_key = $correlationKey AND active = 1
                 ORDER BY first_seen_utc DESC
@@ -311,11 +311,11 @@ public sealed class SqliteRepository
                 INSERT INTO primary_incidents
                     (id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                      blast_radius, confidence, confidence_score, signals_json,
-                     first_seen_utc, last_seen_utc, resolved_utc, active)
+                     first_seen_utc, last_seen_utc, resolved_utc, active, trace_id)
                 VALUES
                     ($id, $correlationKey, $agentId, $severity, $title, $summary, $rootCause,
                      $blastRadius, $confidence, $confidenceScore, $signals,
-                     $firstSeen, $lastSeen, NULL, 1);
+                     $firstSeen, $lastSeen, NULL, 1, $traceId);
                 """;
             BindPrimaryIncident(command, incident);
             command.ExecuteNonQuery();
@@ -338,7 +338,8 @@ public sealed class SqliteRepository
                     confidence = $confidence,
                     confidence_score = $confidenceScore,
                     signals_json = $signals,
-                    last_seen_utc = $lastSeen
+                    last_seen_utc = $lastSeen,
+                    trace_id = $traceId
                 WHERE id = $id AND active = 1;
                 """;
             BindPrimaryIncident(command, incident);
@@ -377,7 +378,7 @@ public sealed class SqliteRepository
             command.CommandText = """
                 SELECT id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                        blast_radius, confidence, confidence_score, signals_json,
-                       first_seen_utc, last_seen_utc, resolved_utc, active
+                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id
                 FROM primary_incidents
                 ORDER BY active DESC, first_seen_utc DESC
                 LIMIT $limit;
@@ -738,7 +739,7 @@ public sealed class SqliteRepository
             command.CommandText = """
                 SELECT id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                        blast_radius, confidence, confidence_score, signals_json,
-                       first_seen_utc, last_seen_utc, resolved_utc, active
+                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id
                 FROM primary_incidents
                 WHERE first_seen_utc >= $since OR resolved_utc >= $since OR active = 1
                 ORDER BY first_seen_utc DESC
@@ -1343,7 +1344,7 @@ public sealed class SqliteRepository
                     value TEXT NOT NULL
                 );
 
-                INSERT INTO metadata(key, value) VALUES ('schema_version', '7.0')
+                INSERT INTO metadata(key, value) VALUES ('schema_version', '8.0')
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
                 CREATE TABLE IF NOT EXISTS incidents (
@@ -1379,7 +1380,8 @@ public sealed class SqliteRepository
                     first_seen_utc TEXT NOT NULL,
                     last_seen_utc TEXT NOT NULL,
                     resolved_utc TEXT NULL,
-                    active INTEGER NOT NULL
+                    active INTEGER NOT NULL,
+                    trace_id TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE INDEX IF NOT EXISTS ix_primary_incidents_correlation_active
@@ -1543,6 +1545,7 @@ public sealed class SqliteRepository
 
             EnsureColumn(connection, "agent_registry", "client_certificate_thumbprint", "TEXT NOT NULL DEFAULT ''");
             EnsureColumn(connection, "commands", "requested_by", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn(connection, "primary_incidents", "trace_id", "TEXT NOT NULL DEFAULT ''");
             using (var cleanup = connection.CreateCommand())
             {
                 cleanup.CommandText = "DELETE FROM operator_sessions WHERE expires_utc <= $now;";
@@ -1644,6 +1647,7 @@ public sealed class SqliteRepository
         command.Parameters.AddWithValue("$signals", JsonSerializer.Serialize(incident.Signals));
         command.Parameters.AddWithValue("$firstSeen", ToDb(incident.FirstSeenUtc));
         command.Parameters.AddWithValue("$lastSeen", ToDb(incident.LastSeenUtc));
+        command.Parameters.AddWithValue("$traceId", incident.TraceId);
     }
 
     private static PrimaryIncidentDto ReadPrimaryIncident(SqliteDataReader reader)
@@ -1657,6 +1661,7 @@ public sealed class SqliteRepository
         return new PrimaryIncidentDto
         {
             Id = reader.GetString(0),
+            TraceId = reader.GetString(15),
             CorrelationKey = reader.GetString(1),
             AgentId = reader.GetString(2),
             Severity = reader.GetString(3),

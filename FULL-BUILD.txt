@@ -1,4 +1,4 @@
-OPSFORGE v0.8.0 - FULL BUILD MANIFEST
+OPSFORGE v0.9.0 - FULL BUILD MANIFEST
 ======================================
 
 This archive is a complete standalone OpsForge source release.
@@ -17,7 +17,7 @@ Included in this release:
 - remote-agent publishing/onboarding scripts
 - full-build smoke test
 - configuration templates
-- SQLite schema creation and v0.6 -> v0.7 migration logic
+- SQLite schema creation and in-place migration through schema 8.0
 - README / changelog / license
 
 Generated runtime files are intentionally NOT included:

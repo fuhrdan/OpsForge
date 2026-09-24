@@ -1,6 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using OpsForge.Contracts;
 using OpsForge.Server;
 
@@ -29,11 +32,26 @@ correlationOptions.Validate();
 builder.Services.AddSingleton(correlationOptions);
 builder.Services.AddSingleton<TelemetryStore>();
 builder.Services.AddSingleton<ReliabilityService>();
+var tracing = builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("OpsForge.Server"))
+    .WithTracing(provider => provider.AddAspNetCoreInstrumentation().AddSource(TraceSources.Server));
+var otlpEndpoint = Environment.GetEnvironmentVariable("OPSFORGE_OTLP_ENDPOINT");
+if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+{
+    if (!Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var endpoint) ||
+        endpoint.Scheme is not ("http" or "https"))
+        throw new InvalidOperationException("OPSFORGE_OTLP_ENDPOINT must be an absolute http(s) URL, such as http://localhost:4317.");
+    tracing.WithTracing(provider => provider.AddOtlpExporter(options =>
+    {
+        options.Endpoint = endpoint;
+        options.Protocol = OtlpExportProtocol.Grpc;
+    }));
+}
 
 var app = builder.Build();
 var secrets = app.Services.GetRequiredService<SecuritySecrets>();
 var identity = app.Services.GetRequiredService<OperatorIdentity>();
-Console.WriteLine($"OpsForge v0.8.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
+Console.WriteLine($"OpsForge v0.9.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
 Console.WriteLine(File.Exists(secrets.BootstrapAdminPath)
     ? $"Initial administrator credentials (first run only): {secrets.BootstrapAdminPath}"
     : "Initial administrator bootstrap credentials have already been consumed.");
@@ -56,7 +74,7 @@ app.MapGet("/api/health", (SqliteRepository repository) => Results.Ok(new
 {
     ok = true,
     service = "OpsForge Server",
-    version = "0.8.0",
+    version = "0.9.0",
     persistence = repository.DatabaseLabel,
     correlationEngine = "configurable-window-v3",
     topologyEngine = "dynamic-multinode-v1",
@@ -362,6 +380,7 @@ app.MapGet("/api/primary-incidents/{incidentId}/report", (HttpContext context, s
     var report = new StringBuilder();
     report.AppendLine($"# OpsForge Primary Incident Report — {incident.Title}");
     report.AppendLine(); report.AppendLine($"- Incident ID: `{incident.Id}`"); report.AppendLine($"- Agent: `{incident.AgentId}`");
+    if (!string.IsNullOrEmpty(incident.TraceId)) report.AppendLine($"- Trace ID: `{incident.TraceId}`");
     report.AppendLine($"- Severity: **{incident.Severity.ToUpperInvariant()}**"); report.AppendLine($"- Confidence: **{incident.Confidence} ({incident.ConfidenceScore:P0})**");
     report.AppendLine($"- Opened: {incident.FirstSeenUtc:O}"); report.AppendLine($"- Resolved: {(incident.ResolvedUtc.HasValue ? incident.ResolvedUtc.Value.ToString("O") : "ACTIVE")}");
     report.AppendLine($"- Correlated MTTR / elapsed: {FormatDuration(incident.DurationSeconds)}");

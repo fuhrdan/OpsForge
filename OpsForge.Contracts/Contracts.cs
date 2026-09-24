@@ -162,6 +162,7 @@ public sealed class CorrelatedSignalDto
 public sealed class PrimaryIncidentDto
 {
     public string Id { get; set; } = string.Empty;
+    public string TraceId { get; set; } = string.Empty;
     public string CorrelationKey { get; set; } = string.Empty;
     public string AgentId { get; set; } = string.Empty;
     public string Severity { get; set; } = string.Empty;

@@ -143,7 +143,8 @@ textarea { min-height: 7rem; resize: vertical; }
 .signal-chip strong { font-size: .69rem; }
 .signal-chip span,.signal-chip small { color: var(--muted); font-size: .62rem; }
 .signal-chip.root-chip { border-color: #756128; background: #211d10; }
-.incident-footer { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-top: .65rem; color: var(--muted); font-size: .68rem; }
+.incident-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .7rem; margin-top: .65rem; color: var(--muted); font-size: .68rem; }
+.incident-footer code { overflow-wrap: anywhere; }
 .incident-actions { display: flex; gap: .4rem; flex-wrap: wrap; align-items: center; margin-top: .65rem; padding-top: .6rem; border-top: 1px solid var(--line); }
 .owner-chip { border: 1px solid #31586e; background: #112c3a; color: #c7e7f4; border-radius: 999px; padding: .28rem .55rem; font-size: .68rem; font-weight: 750; }
 

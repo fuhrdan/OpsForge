@@ -19,7 +19,7 @@ if ([string]::IsNullOrWhiteSpace($enrollmentToken)) {
 }
 $base = $ServerUrl.TrimEnd('/')
 $health = Invoke-RestMethod "$base/api/health"
-if ($health.version -ne '0.8.0') { throw "Expected OpsForge v0.8.0, found $($health.version)." }
+if ($health.version -ne '0.9.0') { throw "Expected OpsForge v0.9.0, found $($health.version)." }
 $runId = [Guid]::NewGuid().ToString('N').Substring(0,8)
 $nodes = @()
 for ($i=1; $i -le $Agents; $i++) {
@@ -38,7 +38,7 @@ function Send-LabHeartbeats([bool]$failed) {
     $stamp = (Get-Date).ToUniversalTime().ToString('o')
     $body = @{
       agentId=$node.Id;machineName=$node.Id;displayName=('ChaosLab Node {0:d2}' -f $node.Index)
-      site='Synthetic Lab';environmentName='lab';operatingSystem='Synthetic';agentVersion='0.8.0'
+      site='Synthetic Lab';environmentName='lab';operatingSystem='Synthetic';agentVersion='0.9.0'
       timestampUtc=$stamp;cpuPercent=12;memoryUsedPercent=$(if ($failed -and $node.Index -eq $Agents) { 94 } else { 24 });uptimeSeconds=200
       drives=@();networkAdapters=@();monitoredServices=@()
       monitoredProcesses=@(@{name='OpsForge.DemoService';running=(-not $outage);processId=$(if($outage){$null}else{4321})})

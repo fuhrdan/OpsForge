@@ -1,19 +1,25 @@
+using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using OpenTelemetry;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using OpsForge.Contracts;
 
 namespace OpsForge.Agent;
 
 internal static class Program
 {
-    private const string Version = "0.8.0";
+    private const string Version = "0.9.0";
+    private static readonly ActivitySource HeartbeatSource = new(TraceSources.Agent);
 
     public static async Task Main()
     {
-        Console.Title = "OpsForge Agent v0.8.0";
-        Console.WriteLine("OpsForge Agent v0.8.0");
+        Console.Title = "OpsForge Agent v0.9.0";
+        Console.WriteLine("OpsForge Agent v0.9.0");
         Console.WriteLine("Authenticated telemetry, optional mTLS identity, Windows services, HTTP/TCP/DNS probes, and constrained commands.");
         Console.WriteLine();
 
@@ -27,6 +33,24 @@ internal static class Program
         var environmentName = Environment.GetEnvironmentVariable("OPSFORGE_AGENT_ENVIRONMENT") ?? options.EnvironmentName;
         var serverUri = new Uri(options.ServerUrl.TrimEnd('/') + "/");
         ValidateTransport(serverUri, options.AllowInsecureRemoteHttp);
+
+        var tracing = Sdk.CreateTracerProviderBuilder()
+            .SetResourceBuilder(ResourceBuilder.CreateDefault().AddService("OpsForge.Agent", serviceInstanceId: agentId))
+            .AddSource(TraceSources.Agent)
+            .AddHttpClientInstrumentation();
+        var otlpEndpoint = Environment.GetEnvironmentVariable("OPSFORGE_OTLP_ENDPOINT");
+        if (!string.IsNullOrWhiteSpace(otlpEndpoint))
+        {
+            if (!Uri.TryCreate(otlpEndpoint, UriKind.Absolute, out var endpoint) ||
+                endpoint.Scheme is not ("http" or "https"))
+                throw new InvalidOperationException("OPSFORGE_OTLP_ENDPOINT must be an absolute http(s) URL, such as http://localhost:4317.");
+            tracing.AddOtlpExporter(exporter =>
+            {
+                exporter.Endpoint = endpoint;
+                exporter.Protocol = OtlpExportProtocol.Grpc;
+            });
+        }
+        using var tracerProvider = tracing.Build();
 
         using var certificateMaterial = options.UseClientCertificate ? EnsureClientCertificate(agentId, options) : null;
         using var handler = new HttpClientHandler();
@@ -58,6 +82,8 @@ internal static class Program
         await Task.Delay(600);
         while (true)
         {
+            using var cycle = HeartbeatSource.StartActivity("OpsForge.HeartbeatCycle");
+            cycle?.SetTag("opsforge.agent.id", agentId);
             try
             {
                 var heartbeat = await collector.CollectAsync(agentId, Version, displayName, site, environmentName);
@@ -71,6 +97,7 @@ internal static class Program
             }
             catch (Exception ex)
             {
+                cycle?.SetStatus(ActivityStatusCode.Error, ex.GetType().Name);
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {ex.GetType().Name}: {ex.Message}");
                 Console.ResetColor();

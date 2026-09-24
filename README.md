@@ -6,7 +6,7 @@
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-v0.8.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v0.9.0-blue)](CHANGELOG.md)
 [![OpsForge CI](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml)
 
 **Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**
@@ -76,6 +76,7 @@ The ADRs document decisions already implemented by OpsForge rather than aspirati
 * SQLite schema evolution
 * Security-conscious agent enrollment and key rotation
 * Optional certificate-bound agent identity
+* Distributed HTTP tracing with optional OTLP export
 
 ---
 
@@ -524,6 +525,20 @@ Then use the included startup scripts for the integrated demonstration environme
 ## Version History
 
 See the detailed [`CHANGELOG.md`](CHANGELOG.md).
+
+### v0.9.0
+
+The agent now creates a trace for each heartbeat cycle. HTTP probes and authenticated heartbeats propagate W3C trace context to the demo service and server. The server records a child span for heartbeat ingestion and each correlation rule; the trace ID that opens a primary incident is stored in SQLite, returned by the API, and shown in the dashboard and downloadable incident report. Reassessment keeps the opening trace ID.
+
+Tracing works locally without a collector, but traces are only retained when an OTLP collector is configured. For a local Jaeger trace viewer, start the collector before OpsForge:
+
+```powershell
+docker run --rm --name opsforge-jaeger -p 16686:16686 -p 4317:4317 cr.jaegertracing.io/jaegertracing/jaeger:2.21.0
+$env:OPSFORGE_OTLP_ENDPOINT = 'http://localhost:4317'
+.\START-HERE.cmd
+```
+
+Open `http://localhost:16686/trace/<Trace ID>` using the Trace ID displayed on a primary incident; the Jaeger search page also lets you select a service. Set `OPSFORGE_OTLP_ENDPOINT` in the environment of **each** process to export all three services. When no endpoint is set, spans are generated for correlation but no exporter is started. The local Jaeger container uses temporary storage; use a protected OTLP endpoint and appropriate collector retention for remote environments. The incident trace ID points to the heartbeat that first opened it, while later reassessments are separate traces.
 
 ### v0.8.0
 

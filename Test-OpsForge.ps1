@@ -1,12 +1,12 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Write-Host 'OpsForge v0.8.0 full-build smoke test' -ForegroundColor Cyan
+Write-Host 'OpsForge v0.9.0 full-build smoke test' -ForegroundColor Cyan
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'dotnet SDK not found; build portion cannot run.' -ForegroundColor Yellow; exit 2 }
 
 dotnet build .\OpsForge.sln
 if ($LASTEXITCODE -ne 0) { throw 'dotnet build failed.' }
 
-$testRoot = Join-Path $env:TEMP ('opsforge-v070-test-' + [Guid]::NewGuid().ToString('N'))
+$testRoot = Join-Path $env:TEMP ('opsforge-v090-test-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $testRoot | Out-Null
 $env:OPSFORGE_ROOT = $testRoot
 $env:OPSFORGE_LISTEN_URL = 'http://127.0.0.1:5180'
@@ -21,7 +21,7 @@ try {
     catch { Start-Sleep -Milliseconds 500 }
   }
   if(-not $ready){ throw 'OpsForge.Server did not become ready.' }
-  if($health.version -ne '0.8.0' -or $health.schemaVersion -ne '7.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
+  if($health.version -ne '0.9.0' -or $health.schemaVersion -ne '8.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
 
   # Bootstrap administrator and remove the temporary credential file.
   $bootstrapPath=Join-Path $testRoot 'data\security\admin-bootstrap.txt'
@@ -82,12 +82,24 @@ try {
       @{id='demo-http';type='HTTP';target='http://localhost:5091/health';success=$false;latencyMs=12;detail='unavailable';checkedUtc=(Get-Date).ToUniversalTime().ToString('o')}
     )
   }|ConvertTo-Json -Depth 10
-  Invoke-RestMethod -Method Post -Uri "$base/api/agents/heartbeat" -Headers $agentHeaders -ContentType 'application/json' -Body $failedHeartbeat | Out-Null
+  $traceId='1234567890abcdef1234567890abcdef'
+  $tracedAgentHeaders=@{'X-OpsForge-Agent-Key'=$enrolled.apiKey;'traceparent'="00-$traceId-1234567890abcdef-01"}
+  Invoke-RestMethod -Method Post -Uri "$base/api/agents/heartbeat" -Headers $tracedAgentHeaders -ContentType 'application/json' -Body $failedHeartbeat | Out-Null
 
   $primaries=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession)
   $primary=$primaries | Where-Object { $_.active -eq $true -and $_.agentId -eq 'smoke-01' } | Select-Object -First 1
   if(-not $primary){ throw 'Correlated primary incident was not created.' }
   if($primary.correlationKey -ne 'smoke-01:primary:demo-application' -or @($primary.signals).Count -ne 3){ throw 'Unexpected correlation key or evidence.' }
+  if($primary.traceId -ne $traceId){ throw "Incoming W3C trace context did not reach the persisted incident: $($primary.traceId)" }
+  $primaryReport=Invoke-RestMethod -Uri "$base/api/primary-incidents/$($primary.id)/report" -WebSession $operatorSession
+  if($primaryReport -notlike "*Trace ID: *$traceId*"){ throw 'Primary report did not include the incident trace ID.' }
+  $reassessed=$failedHeartbeat | ConvertFrom-Json
+  $reassessed.timestampUtc=[DateTime]::UtcNow.AddSeconds(1).ToString('o')
+  foreach($probe in $reassessed.probes){ $probe.checkedUtc=$reassessed.timestampUtc }
+  $reassessmentHeaders=@{'X-OpsForge-Agent-Key'=$enrolled.apiKey;'traceparent'='00-abcdef1234567890abcdef1234567890-1234567890abcdef-01'}
+  Invoke-RestMethod -Method Post -Uri "$base/api/agents/heartbeat" -Headers $reassessmentHeaders -ContentType 'application/json' -Body ($reassessed|ConvertTo-Json -Depth 10) | Out-Null
+  $reassessedPrimary=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession) | Where-Object { $_.id -eq $primary.id } | Select-Object -First 1
+  if($reassessedPrimary.traceId -ne $traceId){ throw 'Reassessment replaced the opening trace ID.' }
 
   # Incident workflow: acknowledge and take ownership.
   Invoke-RestMethod -Method Post -Uri "$base/api/primary-incidents/$($primary.id)/acknowledge" -Headers $operatorHeaders -WebSession $operatorSession -ContentType 'application/json' -Body (@{note='Smoke-test acknowledgement'}|ConvertTo-Json) | Out-Null
@@ -133,7 +145,7 @@ try {
     if(-not ($audit | Where-Object action -eq $expected)){ throw "Audit log missing $expected event." }
   }
 
-  Write-Host 'PASS: build, schema 7, bootstrap/RBAC, agent auth, correlation, acknowledgement, ownership, maintenance suppression, SLA analytics, telemetry history, and audit.' -ForegroundColor Green
+  Write-Host 'PASS: build, schema 8, bootstrap/RBAC, agent auth, correlation, trace context, acknowledgement, ownership, maintenance suppression, SLA analytics, telemetry history, and audit.' -ForegroundColor Green
 }
 finally {
   if($server -and -not $server.HasExited){ Stop-Process -Id $server.Id -Force }

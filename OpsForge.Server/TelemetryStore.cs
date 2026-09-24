@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using OpsForge.Contracts;
 
 namespace OpsForge.Server;
 
 public sealed class TelemetryStore
 {
+    private static readonly ActivitySource CorrelationSource = new(TraceSources.Server);
     private readonly ConcurrentDictionary<string, AgentState> _agents = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, object> _agentLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, CommandRecord> _commands = new();
@@ -20,11 +22,17 @@ public sealed class TelemetryStore
 
     public bool RecordHeartbeat(AgentHeartbeatRequest heartbeat)
     {
+        using var ingestion = CorrelationSource.StartActivity("OpsForge.RecordHeartbeat");
+        ingestion?.SetTag("opsforge.agent.id", heartbeat.AgentId);
         // Serialize each agent's ingestion so delayed and duplicate snapshots cannot undo newer state.
         lock (_agentLocks.GetOrAdd(heartbeat.AgentId, _ => new object()))
         {
         if (_agents.TryGetValue(heartbeat.AgentId, out var previous) &&
-            heartbeat.TimestampUtc <= previous.Heartbeat.TimestampUtc) return false;
+            heartbeat.TimestampUtc <= previous.Heartbeat.TimestampUtc)
+        {
+            ingestion?.AddEvent(new ActivityEvent("heartbeat.ignored.stale"));
+            return false;
+        }
         var now = DateTimeOffset.UtcNow;
         _agents[heartbeat.AgentId] = new AgentState(heartbeat, now);
         _repository.RecordTelemetrySample(heartbeat, now);
@@ -496,6 +504,8 @@ public sealed class TelemetryStore
 
     private void EvaluateRule(AgentHeartbeatRequest heartbeat, CorrelationRule rule, DateTimeOffset now)
     {
+        using var evaluationSpan = CorrelationSource.StartActivity("OpsForge.EvaluateCorrelationRule");
+        evaluationSpan?.SetTag("opsforge.correlation.rule", rule.Id);
         var correlationKey = $"{heartbeat.AgentId}:primary:{rule.Id}";
         var existing = _repository.GetActivePrimaryIncident(correlationKey);
         var evaluation = CorrelationEngine.Evaluate(heartbeat, rule);
@@ -514,12 +524,15 @@ public sealed class TelemetryStore
 
         if (candidate is not null)
         {
+            candidate.TraceId = existing?.TraceId is { Length: > 0 } priorTrace
+                ? priorTrace : Activity.Current?.TraceId.ToString() ?? string.Empty;
             if (existing is null)
             {
                 candidate.Id = Guid.NewGuid().ToString("N");
                 candidate.FirstSeenUtc = now;
                 candidate.LastSeenUtc = now;
                 _repository.InsertPrimaryIncident(candidate);
+                evaluationSpan?.AddEvent(new ActivityEvent("incident.correlated"));
                 _repository.AddTimelineEvent(
                     heartbeat.AgentId,
                     "primary-incident",

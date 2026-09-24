@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.9.0
+
+- Instrument agent heartbeat cycles, HTTP probes, server requests and correlation, and demo HTTP requests with OpenTelemetry and W3C trace propagation.
+- Export OTLP gRPC traces when `OPSFORGE_OTLP_ENDPOINT` is set; provide local Jaeger setup instructions.
+- Persist the opening trace ID on primary incidents in SQLite schema 8.0 and show it in the API, dashboard, and report; migrate existing databases in place.
+- Extend the integration smoke test to verify an incoming trace context through incident persistence and reporting.
+- Continue collecting agent telemetry when the host denies network adapter enumeration.
+
 ## v0.8.0
 
 - Correlate explicit groups of process, Windows service, and probe observations with configurable time windows and failure thresholds.
