@@ -15,6 +15,12 @@ $server = Start-Process dotnet -ArgumentList '.\OpsForge.Server\bin\Debug\net8.0
 
 try {
   $base='http://127.0.0.1:5180'
+  # Windows PowerShell 5.1 can return a JSON array as one pipeline object.
+  # Enumerate it explicitly before filtering incidents by property.
+  function Get-ApiRows($uri, $session) {
+    $response=Invoke-RestMethod -Uri $uri -WebSession $session
+    foreach($row in $response){ Write-Output $row }
+  }
   $ready=$false
   for($i=0;$i -lt 30;$i++){
     try { $health=Invoke-RestMethod "$base/api/health"; $ready=$true; break }
@@ -174,14 +180,14 @@ try {
   }
   foreach($node in $fleetNodes){Send-FleetHeartbeat $node $false}
   foreach($node in $fleetNodes){Send-FleetHeartbeat $node $true}
-  $fleetRows=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession)
+  $fleetRows=@(Get-ApiRows "$base/api/primary-incidents" $operatorSession)
   $fleet=$fleetRows|Where-Object {$_.active -and $_.fleetServiceId -eq 'smoke-fleet-01'}|Select-Object -First 1
-  if(-not $fleet -or @($fleet.fleetEvidence).Count -ne 3){throw 'One fleet incident did not collect all three affected agents.'}
+  if(-not $fleet -or $fleet.id -isnot [string] -or $fleet.id -notmatch '^[0-9a-f]{32}$' -or @($fleet.fleetEvidence).Count -ne 3){throw 'One fleet incident did not collect all three affected agents.'}
   if(@($fleetRows|Where-Object {$_.active -and $_.agentId -like 'fleet-smoke-*'}).Count -ne 1){throw 'Fleet outage opened duplicate primary incidents.'}
   if(@($fleet.fleetEvidence|Select-Object -ExpandProperty traceId -Unique).Count -ne 3){throw 'Fleet evidence lost distinct agent traces.'}
   $fleetReport=Invoke-RestMethod -Uri "$base/api/primary-incidents/$($fleet.id)/report" -WebSession $operatorSession
   if($fleetReport -notlike '*Affected agents and traces*'){throw 'Fleet report omitted per-agent evidence.'}
-  $independentRows=@(Invoke-RestMethod -Uri "$base/api/incidents" -WebSession $operatorSession)
+  $independentRows=@(Get-ApiRows "$base/api/incidents" $operatorSession)
   if(-not ($independentRows|Where-Object {$_.agentId -eq 'fleet-smoke-04' -and $_.active -and $_.category -eq 'performance'})){throw 'Independent memory warning was not visible.'}
 
   # Persisted snapshots and incident identity survive restart; silence from one observer cannot prove recovery.
@@ -193,14 +199,14 @@ try {
     catch{Start-Sleep -Milliseconds 500}
   }
   if(-not $ready -or $health.schemaVersion -ne '9.0'){throw 'Fleet server did not restart on schema 9.'}
-  $afterRestart=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession)|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
+  $afterRestart=Get-ApiRows "$base/api/primary-incidents" $operatorSession|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
   if(-not $afterRestart.active -or @($afterRestart.fleetEvidence).Count -ne 3){throw 'Fleet incident or evidence was lost on restart.'}
   Send-FleetHeartbeat $fleetNodes[0] $false
   Send-FleetHeartbeat $fleetNodes[1] $false
-  $pending=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession)|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
+  $pending=Get-ApiRows "$base/api/primary-incidents" $operatorSession|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
   if(-not $pending.active -or @($pending.fleetEvidence|Where-Object {$_.active}).Count -ne 1){throw 'Missing observer was incorrectly treated as recovered.'}
   Send-FleetHeartbeat $fleetNodes[2] $false
-  $closed=@(Invoke-RestMethod -Uri "$base/api/primary-incidents" -WebSession $operatorSession)|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
+  $closed=Get-ApiRows "$base/api/primary-incidents" $operatorSession|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
   if($closed.active -or @($closed.fleetEvidence|Where-Object {$_.active}).Count -ne 0){throw 'Fresh recovery did not resolve the fleet incident.'}
 
   Write-Host 'PASS: build, schema 9, bootstrap/RBAC, agent auth, fleet correlation, trace context, restart/recovery, acknowledgement, ownership, maintenance suppression, SLA analytics, telemetry history, and audit.' -ForegroundColor Green
