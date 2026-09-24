@@ -6,7 +6,7 @@
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-v0.9.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.0.0-blue)](CHANGELOG.md)
 [![OpsForge CI](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml)
 
 **Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**
@@ -35,6 +35,7 @@ OpsForge is designed around explicit operational invariants rather than treating
 | [**ADR-0001 — Preview → Execute → Verify remediation**](docs/adr/0001-preview-execute-verify-remediation.md)      | A successful command does not prove service recovery. Later monitoring evidence must verify the outcome.                                           |
 | [**ADR-0002 — Deterministic incident correlation**](docs/adr/0002-deterministic-incident-correlation.md)          | Related process, TCP, HTTP, and dependency failures can be represented as one explainable Primary Incident without discarding derivative evidence. |
 | [**ADR-0003 — Evidence-based reliability accounting**](docs/adr/0003-reliability-accounting-missing-telemetry.md) | Missing telemetry is not silently counted as healthy uptime, preventing optimistic SLA and error-budget reporting.                                 |
+| [**ADR-0004 — Explicit fleet service identity**](docs/adr/0004-explicit-fleet-service-identity.md) | Source and observer failures join only when their authenticated heartbeats declare the same service and rule; recovery requires fresh measurements. |
 
 These decisions reflect three recurring principles:
 
@@ -63,6 +64,7 @@ The ADRs document decisions already implemented by OpsForge rather than aspirati
 * Windows process and service telemetry
 * HTTP, TCP, and DNS probes
 * Incident correlation and probable root cause
+* Cross-agent service incident correlation with per-agent traces and recovery evidence
 * Dependency topology and blast-radius analysis
 * Role-based access control
 * Operator acknowledgement and incident ownership
@@ -506,6 +508,7 @@ It performs a real `dotnet build` and exercises a clean temporary environment, i
 * Maintenance cancellation
 * Inventory
 * Audit attribution
+* Fleet-wide correlation, per-agent trace evidence, restart persistence, and partial recovery
 
 The temporary test environment is removed afterward and does not overwrite the normal OpsForge database.
 
@@ -525,6 +528,20 @@ Then use the included startup scripts for the integrated demonstration environme
 ## Version History
 
 See the detailed [`CHANGELOG.md`](CHANGELOG.md).
+
+### v1.0.0
+
+An agent can declare `fleetServiceId`, `fleetRuleId`, and `fleetRole` (`source` or `observer`) in its `OpsForge.Agent/appsettings.json`. Assign the same service ID and a configured rule ID to one source and any number of observers. The source reports the configured process or Windows service and probes; observers report the rule's probes. Once the source reports a configured failure, observer failures for the same service and rule within the rule's time window join **one** primary incident. Observer-only failures do not create a fleet primary incident. Other services and unrelated CPU or memory warnings remain separate.
+
+The dashboard and incident report list affected agents, their signals, and each agent's opening and recovery trace IDs. The opening incident trace ID stays stable. A fleet incident closes only after **every affected agent** reports a fresh complete healthy snapshot; missing or stale measurements leave it open. The server saves agent snapshots and fleet evidence in SQLite schema 9.0, including across restarts. Existing databases migrate in place.
+
+The included ChaosLab demonstrates the incident with synthetic agents:
+
+```powershell
+.\Start-OpsForge-ChaosLab.ps1 -Scenario CascadingFailure -Agents 10 -HoldSeconds 20
+```
+
+Tags come from agents holding valid credentials. Assign one source per service/rule identity in a trusted deployment; the server does not independently verify service membership. Each agent currently supports one fleet service/rule pair. See [ADR-0004](docs/adr/0004-explicit-fleet-service-identity.md) for the correlation and recovery rules.
 
 ### v0.9.0
 

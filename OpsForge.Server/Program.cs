@@ -51,7 +51,7 @@ if (!string.IsNullOrWhiteSpace(otlpEndpoint))
 var app = builder.Build();
 var secrets = app.Services.GetRequiredService<SecuritySecrets>();
 var identity = app.Services.GetRequiredService<OperatorIdentity>();
-Console.WriteLine($"OpsForge v0.9.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
+Console.WriteLine($"OpsForge v1.0.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
 Console.WriteLine(File.Exists(secrets.BootstrapAdminPath)
     ? $"Initial administrator credentials (first run only): {secrets.BootstrapAdminPath}"
     : "Initial administrator bootstrap credentials have already been consumed.");
@@ -74,7 +74,7 @@ app.MapGet("/api/health", (SqliteRepository repository) => Results.Ok(new
 {
     ok = true,
     service = "OpsForge Server",
-    version = "0.9.0",
+    version = "1.0.0",
     persistence = repository.DatabaseLabel,
     correlationEngine = "configurable-window-v3",
     topologyEngine = "dynamic-multinode-v1",
@@ -226,10 +226,11 @@ app.MapPost("/api/agent-inventory/{agentId}/revoke", (HttpContext context, strin
     return revoked ? Results.Ok(new { revoked = true }) : Results.NotFound(new { error = "Agent not found." });
 });
 
-app.MapPost("/api/agents/heartbeat", (HttpContext context, AgentHeartbeatRequest heartbeat, SecuritySecrets security, AgentRegistry registry, TelemetryStore store) =>
+app.MapPost("/api/agents/heartbeat", (HttpContext context, AgentHeartbeatRequest heartbeat, SecuritySecrets security, AgentRegistry registry, TelemetryStore store, CorrelationOptions correlation) =>
 {
     if (string.IsNullOrWhiteSpace(heartbeat.AgentId) || string.IsNullOrWhiteSpace(heartbeat.MachineName)) return Results.BadRequest(new { error = "AgentId and MachineName are required." });
     if (!AgentAuthorized(context, heartbeat.AgentId, security, registry)) return Results.Unauthorized();
+    if (!ValidFleetTag(heartbeat, correlation)) return Results.BadRequest(new { error = "FleetServiceId requires a configured FleetRuleId and FleetRole (source or observer). Use letters, digits, hyphens, underscores, dots, and colons in service IDs." });
     if (heartbeat.TimestampUtc == default || (DateTimeOffset.UtcNow - heartbeat.TimestampUtc).Duration() > TimeSpan.FromMinutes(5))
         return Results.BadRequest(new { error = "Heartbeat timestamp must be within five minutes of server time." });
     if (!store.RecordHeartbeat(heartbeat)) return Results.Ok(new { accepted = false, outOfOrder = true, serverTimeUtc = DateTimeOffset.UtcNow });
@@ -380,6 +381,7 @@ app.MapGet("/api/primary-incidents/{incidentId}/report", (HttpContext context, s
     var report = new StringBuilder();
     report.AppendLine($"# OpsForge Primary Incident Report — {incident.Title}");
     report.AppendLine(); report.AppendLine($"- Incident ID: `{incident.Id}`"); report.AppendLine($"- Agent: `{incident.AgentId}`");
+    if (incident.FleetEvidence.Count > 0) report.AppendLine($"- Fleet service: `{incident.FleetServiceId}` · {incident.FleetEvidence.Count} affected agent(s)");
     if (!string.IsNullOrEmpty(incident.TraceId)) report.AppendLine($"- Trace ID: `{incident.TraceId}`");
     report.AppendLine($"- Severity: **{incident.Severity.ToUpperInvariant()}**"); report.AppendLine($"- Confidence: **{incident.Confidence} ({incident.ConfidenceScore:P0})**");
     report.AppendLine($"- Opened: {incident.FirstSeenUtc:O}"); report.AppendLine($"- Resolved: {(incident.ResolvedUtc.HasValue ? incident.ResolvedUtc.Value.ToString("O") : "ACTIVE")}");
@@ -389,6 +391,16 @@ app.MapGet("/api/primary-incidents/{incidentId}/report", (HttpContext context, s
     report.AppendLine($"- Maintenance: {(incident.MaintenanceSuppressed ? $"muted · {incident.MaintenanceWindowName}" : "no active maintenance suppression")}");
     report.AppendLine(); report.AppendLine("## Summary"); report.AppendLine(incident.Summary);
     report.AppendLine(); report.AppendLine("## Probable root cause"); report.AppendLine(incident.ProbableRootCause); report.AppendLine(); report.AppendLine("## Blast radius"); report.AppendLine(incident.BlastRadius);
+    if (incident.FleetEvidence.Count > 0)
+    {
+        report.AppendLine(); report.AppendLine("## Affected agents and traces");
+        foreach (var evidence in incident.FleetEvidence)
+        {
+            report.AppendLine($"- **{evidence.DisplayName}** (`{evidence.AgentId}`) · {evidence.Role} · {(evidence.Active ? "affected" : "recovered")} · first observed {evidence.FirstSeenUtc:O}");
+            if (!string.IsNullOrEmpty(evidence.TraceId)) report.AppendLine($"  - Failure trace: `{evidence.TraceId}`");
+            if (!string.IsNullOrEmpty(evidence.RecoveryTraceId)) report.AppendLine($"  - Recovery trace: `{evidence.RecoveryTraceId}`");
+        }
+    }
     report.AppendLine(); report.AppendLine("## Correlated signals"); foreach (var signal in incident.Signals) report.AppendLine($"- **{signal.SignalType} · {signal.Target}** — {signal.Role} — {signal.Evidence}");
     report.AppendLine(); report.AppendLine("## Correlation timeline"); foreach (var item in events) report.AppendLine($"- {item.TimestampUtc:O} — **{item.EventType}** — {item.Detail}");
     return Results.Text(report.ToString(), "text/markdown; charset=utf-8");
@@ -414,6 +426,18 @@ var listenUrl = Environment.GetEnvironmentVariable("OPSFORGE_LISTEN_URL") ?? "ht
 app.Run(listenUrl);
 
 static string? Header(HttpContext context, string name) => context.Request.Headers[name].FirstOrDefault();
+static bool ValidFleetTag(AgentHeartbeatRequest heartbeat, CorrelationOptions correlation)
+{
+    if (string.IsNullOrEmpty(heartbeat.FleetServiceId))
+        return string.IsNullOrEmpty(heartbeat.FleetRuleId) && string.IsNullOrEmpty(heartbeat.FleetRole);
+    var service = heartbeat.FleetServiceId;
+    return service.Length <= 96 && service.All(ch =>
+            (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+            (ch >= '0' && ch <= '9') || ch is '-' or '_' or '.' or ':') &&
+        (string.Equals(heartbeat.FleetRole, "source", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(heartbeat.FleetRole, "observer", StringComparison.OrdinalIgnoreCase)) &&
+        correlation.Rules.Any(rule => string.Equals(rule.Id, heartbeat.FleetRuleId, StringComparison.OrdinalIgnoreCase));
+}
 static string? SessionToken(HttpContext context) => context.Request.Cookies.TryGetValue(OperatorIdentity.SessionCookieName, out var token) ? token : null;
 static AuthPrincipal? CurrentPrincipal(HttpContext context, OperatorIdentity identity) => identity.Authenticate(SessionToken(context));
 static string RemoteIp(HttpContext context) => context.Connection.RemoteIpAddress?.ToString() ?? "unknown";

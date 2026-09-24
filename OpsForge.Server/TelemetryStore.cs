@@ -11,6 +11,7 @@ public sealed class TelemetryStore
     private readonly ConcurrentDictionary<string, object> _agentLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<Guid, CommandRecord> _commands = new();
     private readonly ConcurrentDictionary<Guid, PreviewRecord> _previews = new();
+    private readonly object _fleetGate = new();
     private readonly SqliteRepository _repository;
     private readonly CorrelationOptions _correlation;
 
@@ -18,6 +19,8 @@ public sealed class TelemetryStore
     {
         _repository = repository;
         _correlation = correlation;
+        foreach (var snapshot in repository.GetAgentSnapshots())
+            _agents[snapshot.Heartbeat.AgentId] = new AgentState(snapshot.Heartbeat, snapshot.LastSeenUtc, snapshot.TraceId);
     }
 
     public bool RecordHeartbeat(AgentHeartbeatRequest heartbeat)
@@ -34,7 +37,9 @@ public sealed class TelemetryStore
             return false;
         }
         var now = DateTimeOffset.UtcNow;
-        _agents[heartbeat.AgentId] = new AgentState(heartbeat, now);
+        var traceId = Activity.Current?.TraceId.ToString() ?? string.Empty;
+        _agents[heartbeat.AgentId] = new AgentState(heartbeat, now, traceId);
+        _repository.SaveAgentSnapshot(heartbeat, now, traceId);
         _repository.RecordTelemetrySample(heartbeat, now);
 
         UpdateIncident(
@@ -241,7 +246,18 @@ public sealed class TelemetryStore
                 incident.OwnerDisplayName = workflow.OwnerDisplayName;
                 incident.AssignedUtc = workflow.AssignedUtc;
             }
-            if (incident.Active && _repository.GetActiveMaintenanceWindow(incident.AgentId, now) is { } maintenance)
+            if (incident.Active && incident.FleetEvidence.Count > 0)
+            {
+                var affected = incident.FleetEvidence.Where(e => e.Active).ToList();
+                var windows = affected.Select(e => _repository.GetActiveMaintenanceWindow(e.AgentId, now)).ToList();
+                if (affected.Count > 0 && windows.All(window => window is not null))
+                {
+                    incident.MaintenanceSuppressed = true;
+                    incident.MaintenanceWindowName = string.Join(", ", windows.Select(window => window!.Name)
+                        .Distinct(StringComparer.OrdinalIgnoreCase));
+                }
+            }
+            else if (incident.Active && _repository.GetActiveMaintenanceWindow(incident.AgentId, now) is { } maintenance)
             {
                 incident.MaintenanceSuppressed = true;
                 incident.MaintenanceWindowName = maintenance.Name;
@@ -498,9 +514,67 @@ public sealed class TelemetryStore
     {
         foreach (var rule in _correlation.Rules)
         {
-            EvaluateRule(heartbeat, rule, now);
+            if (heartbeat.FleetServiceId.Length > 0 &&
+                string.Equals(heartbeat.FleetRuleId, rule.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                lock (_fleetGate) EvaluateFleetRule(heartbeat, rule, now);
+            }
+            else EvaluateRule(heartbeat, rule, now);
         }
     }
+
+    private void EvaluateFleetRule(AgentHeartbeatRequest heartbeat, CorrelationRule rule, DateTimeOffset now)
+    {
+        using var evaluationSpan = CorrelationSource.StartActivity("OpsForge.EvaluateFleetRule");
+        evaluationSpan?.SetTag("opsforge.fleet.service", heartbeat.FleetServiceId);
+        var localKey = $"{heartbeat.AgentId}:primary:{rule.Id}";
+        if (_repository.GetActivePrimaryIncident(localKey) is { } local)
+        {
+            _repository.ResolvePrimaryIncident(local.Id, now, "This agent is now part of an explicitly tagged fleet service.");
+            _repository.AddTimelineEvent(heartbeat.AgentId, "primary-incident", local.Id, "Resolved",
+                "Joined fleet correlation", $"Service {heartbeat.FleetServiceId} now owns this diagnosis.", now);
+        }
+
+        var key = $"fleet:{heartbeat.FleetServiceId}:{rule.Id}";
+        var existing = _repository.GetActivePrimaryIncident(key);
+        var snapshots = _agents.Values.Select(state => new FleetSnapshot(state.Heartbeat, state.LastSeenUtc, state.TraceId)).ToList();
+        var result = FleetCorrelationEngine.Evaluate(heartbeat.FleetServiceId, rule, snapshots, existing, now);
+        var candidate = result.Candidate;
+        if (candidate is null) return;
+        candidate.LastSeenUtc = now;
+
+        if (existing is null)
+        {
+            candidate.Id = Guid.NewGuid().ToString("N");
+            candidate.FirstSeenUtc = now;
+            _repository.InsertPrimaryIncident(candidate);
+            evaluationSpan?.AddEvent(new ActivityEvent("fleet.incident.correlated"));
+            _repository.AddTimelineEvent(candidate.AgentId, "primary-incident", candidate.Id, "Correlated",
+                candidate.Title, $"Fleet service {candidate.FleetServiceId}: {candidate.Summary}", now);
+            return;
+        }
+
+        candidate.Id = existing.Id;
+        candidate.FirstSeenUtc = existing.FirstSeenUtc;
+        candidate.TraceId = existing.TraceId;
+        var oldSignature = FleetSignature(existing);
+        _repository.TouchPrimaryIncident(candidate);
+        if (result.Recovered)
+        {
+            _repository.ResolvePrimaryIncident(candidate.Id, now, candidate.Summary);
+            _repository.AddTimelineEvent(candidate.AgentId, "primary-incident", candidate.Id, "Resolved",
+                $"Resolved: {candidate.Title}", candidate.Summary, now);
+        }
+        else if (!string.Equals(oldSignature, FleetSignature(candidate), StringComparison.Ordinal))
+        {
+            _repository.AddTimelineEvent(candidate.AgentId, "primary-incident", candidate.Id, "Reassessed",
+                $"Fleet diagnosis reassessed: {candidate.Title}", candidate.Summary, now);
+        }
+    }
+
+    private static string FleetSignature(PrimaryIncidentDto incident) =>
+        string.Join("|", incident.FleetEvidence.OrderBy(e => e.AgentId, StringComparer.OrdinalIgnoreCase)
+            .Select(e => $"{e.AgentId}:{e.Active}:{string.Join(",", e.Signals.Select(s => s.SignalKey))}"));
 
     private void EvaluateRule(AgentHeartbeatRequest heartbeat, CorrelationRule rule, DateTimeOffset now)
     {
@@ -737,7 +811,7 @@ public sealed class TelemetryStore
         ExpiresUtc = record.ExpiresUtc
     };
 
-    private sealed record AgentState(AgentHeartbeatRequest Heartbeat, DateTimeOffset LastSeenUtc);
+    private sealed record AgentState(AgentHeartbeatRequest Heartbeat, DateTimeOffset LastSeenUtc, string TraceId);
 
     private sealed class PreviewRecord
     {

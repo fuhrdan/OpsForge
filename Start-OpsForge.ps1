@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 Write-Host ''
 Write-Host '============================================================' -ForegroundColor DarkCyan
-Write-Host ' OPSFORGE v0.9.0 - RELIABILITY COMMAND CENTER - FULL BUILD' -ForegroundColor Cyan
+Write-Host ' OPSFORGE v1.0.0 - RELIABILITY COMMAND CENTER - FULL BUILD' -ForegroundColor Cyan
 Write-Host '============================================================' -ForegroundColor DarkCyan
 Write-Host ''
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'ERROR: dotnet was not found in PATH.' -ForegroundColor Red; Write-Host 'Install the .NET 8 SDK, then run START-HERE.cmd again.' -ForegroundColor Yellow; exit 1 }

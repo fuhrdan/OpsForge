@@ -30,7 +30,46 @@ public sealed class SqliteRepository
     }
 
     public string DatabaseLabel => "data/opsforge.db";
-    public string SchemaVersion => "8.0";
+    public string SchemaVersion => "9.0";
+
+    public IReadOnlyList<PersistedAgentSnapshot> GetAgentSnapshots()
+    {
+        lock (_gate)
+        {
+            var snapshots = new List<PersistedAgentSnapshot>();
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT heartbeat_json, received_utc, trace_id FROM agent_snapshots;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var heartbeat = JsonSerializer.Deserialize<AgentHeartbeatRequest>(reader.GetString(0));
+                if (heartbeat is not null && !string.IsNullOrWhiteSpace(heartbeat.AgentId))
+                    snapshots.Add(new PersistedAgentSnapshot(heartbeat, FromDb(reader.GetString(1)), reader.GetString(2)));
+            }
+            return snapshots;
+        }
+    }
+
+    public void SaveAgentSnapshot(AgentHeartbeatRequest heartbeat, DateTimeOffset receivedUtc, string traceId)
+    {
+        lock (_gate)
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO agent_snapshots(agent_id, heartbeat_json, received_utc, trace_id)
+                VALUES ($id, $heartbeat, $received, $trace)
+                ON CONFLICT(agent_id) DO UPDATE SET heartbeat_json = excluded.heartbeat_json,
+                    received_utc = excluded.received_utc, trace_id = excluded.trace_id;
+                """;
+            command.Parameters.AddWithValue("$id", heartbeat.AgentId);
+            command.Parameters.AddWithValue("$heartbeat", JsonSerializer.Serialize(heartbeat));
+            command.Parameters.AddWithValue("$received", ToDb(receivedUtc));
+            command.Parameters.AddWithValue("$trace", traceId);
+            command.ExecuteNonQuery();
+        }
+    }
 
     public IncidentDto? GetActiveIncident(string ruleKey)
     {
@@ -289,7 +328,8 @@ public sealed class SqliteRepository
             command.CommandText = """
                 SELECT id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                        blast_radius, confidence, confidence_score, signals_json,
-                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id
+                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id,
+                       fleet_service_id, fleet_evidence_json
                 FROM primary_incidents
                 WHERE correlation_key = $correlationKey AND active = 1
                 ORDER BY first_seen_utc DESC
@@ -311,11 +351,11 @@ public sealed class SqliteRepository
                 INSERT INTO primary_incidents
                     (id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                      blast_radius, confidence, confidence_score, signals_json,
-                     first_seen_utc, last_seen_utc, resolved_utc, active, trace_id)
+                     first_seen_utc, last_seen_utc, resolved_utc, active, trace_id, fleet_service_id, fleet_evidence_json)
                 VALUES
                     ($id, $correlationKey, $agentId, $severity, $title, $summary, $rootCause,
                      $blastRadius, $confidence, $confidenceScore, $signals,
-                     $firstSeen, $lastSeen, NULL, 1, $traceId);
+                     $firstSeen, $lastSeen, NULL, 1, $traceId, $fleetServiceId, $fleetEvidence);
                 """;
             BindPrimaryIncident(command, incident);
             command.ExecuteNonQuery();
@@ -339,7 +379,9 @@ public sealed class SqliteRepository
                     confidence_score = $confidenceScore,
                     signals_json = $signals,
                     last_seen_utc = $lastSeen,
-                    trace_id = $traceId
+                    trace_id = $traceId,
+                    fleet_service_id = $fleetServiceId,
+                    fleet_evidence_json = $fleetEvidence
                 WHERE id = $id AND active = 1;
                 """;
             BindPrimaryIncident(command, incident);
@@ -378,7 +420,7 @@ public sealed class SqliteRepository
             command.CommandText = """
                 SELECT id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                        blast_radius, confidence, confidence_score, signals_json,
-                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id
+                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id, fleet_service_id, fleet_evidence_json
                 FROM primary_incidents
                 ORDER BY active DESC, first_seen_utc DESC
                 LIMIT $limit;
@@ -739,7 +781,7 @@ public sealed class SqliteRepository
             command.CommandText = """
                 SELECT id, correlation_key, agent_id, severity, title, summary, probable_root_cause,
                        blast_radius, confidence, confidence_score, signals_json,
-                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id
+                       first_seen_utc, last_seen_utc, resolved_utc, active, trace_id, fleet_service_id, fleet_evidence_json
                 FROM primary_incidents
                 WHERE first_seen_utc >= $since OR resolved_utc >= $since OR active = 1
                 ORDER BY first_seen_utc DESC
@@ -1344,7 +1386,7 @@ public sealed class SqliteRepository
                     value TEXT NOT NULL
                 );
 
-                INSERT INTO metadata(key, value) VALUES ('schema_version', '8.0')
+                INSERT INTO metadata(key, value) VALUES ('schema_version', '9.0')
                 ON CONFLICT(key) DO UPDATE SET value = excluded.value;
 
                 CREATE TABLE IF NOT EXISTS incidents (
@@ -1381,11 +1423,20 @@ public sealed class SqliteRepository
                     last_seen_utc TEXT NOT NULL,
                     resolved_utc TEXT NULL,
                     active INTEGER NOT NULL,
-                    trace_id TEXT NOT NULL DEFAULT ''
+                    trace_id TEXT NOT NULL DEFAULT '',
+                    fleet_service_id TEXT NOT NULL DEFAULT '',
+                    fleet_evidence_json TEXT NOT NULL DEFAULT '[]'
                 );
 
                 CREATE INDEX IF NOT EXISTS ix_primary_incidents_correlation_active
                     ON primary_incidents(correlation_key, active);
+
+                CREATE TABLE IF NOT EXISTS agent_snapshots (
+                    agent_id TEXT PRIMARY KEY,
+                    heartbeat_json TEXT NOT NULL,
+                    received_utc TEXT NOT NULL,
+                    trace_id TEXT NOT NULL DEFAULT ''
+                );
 
                 CREATE TABLE IF NOT EXISTS timeline_events (
                     event_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1546,6 +1597,8 @@ public sealed class SqliteRepository
             EnsureColumn(connection, "agent_registry", "client_certificate_thumbprint", "TEXT NOT NULL DEFAULT ''");
             EnsureColumn(connection, "commands", "requested_by", "TEXT NOT NULL DEFAULT ''");
             EnsureColumn(connection, "primary_incidents", "trace_id", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn(connection, "primary_incidents", "fleet_service_id", "TEXT NOT NULL DEFAULT ''");
+            EnsureColumn(connection, "primary_incidents", "fleet_evidence_json", "TEXT NOT NULL DEFAULT '[]'");
             using (var cleanup = connection.CreateCommand())
             {
                 cleanup.CommandText = "DELETE FROM operator_sessions WHERE expires_utc <= $now;";
@@ -1648,6 +1701,8 @@ public sealed class SqliteRepository
         command.Parameters.AddWithValue("$firstSeen", ToDb(incident.FirstSeenUtc));
         command.Parameters.AddWithValue("$lastSeen", ToDb(incident.LastSeenUtc));
         command.Parameters.AddWithValue("$traceId", incident.TraceId);
+        command.Parameters.AddWithValue("$fleetServiceId", incident.FleetServiceId);
+        command.Parameters.AddWithValue("$fleetEvidence", JsonSerializer.Serialize(incident.FleetEvidence));
     }
 
     private static PrimaryIncidentDto ReadPrimaryIncident(SqliteDataReader reader)
@@ -1662,6 +1717,8 @@ public sealed class SqliteRepository
         {
             Id = reader.GetString(0),
             TraceId = reader.GetString(15),
+            FleetServiceId = reader.GetString(16),
+            FleetEvidence = JsonSerializer.Deserialize<List<FleetEvidenceDto>>(reader.GetString(17)) ?? new(),
             CorrelationKey = reader.GetString(1),
             AgentId = reader.GetString(2),
             Severity = reader.GetString(3),
@@ -1686,3 +1743,5 @@ public sealed class SqliteRepository
     private static DateTimeOffset? ReadNullableDate(SqliteDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : FromDb(reader.GetString(ordinal));
 }
+
+public sealed record PersistedAgentSnapshot(AgentHeartbeatRequest Heartbeat, DateTimeOffset LastSeenUtc, string TraceId);

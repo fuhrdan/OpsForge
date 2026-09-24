@@ -69,7 +69,77 @@ try
 }
 catch (InvalidOperationException) { }
 
+var fleetRule = new CorrelationRule
+{
+    Id = "demo-application", Title = "Demo unavailable", Process = "OpsForge.DemoService",
+    ProbeIds = new() { "demo-tcp", "demo-http" }, WindowSeconds = 30, MinimumFailures = 2
+};
+var root = FleetHeartbeat("source-01", "source", "lab-run-1", time, true);
+var observer1 = FleetHeartbeat("observer-01", "observer", "lab-run-1", time.AddSeconds(2), true);
+var observer2 = FleetHeartbeat("observer-02", "observer", "lab-run-1", time.AddSeconds(3), true);
+var independent = FleetHeartbeat("observer-03", "observer", "lab-run-2", time.AddSeconds(3), true);
+Check(FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule,
+    new[] { new FleetSnapshot(observer1, time.AddSeconds(2), "observer-first") }, null, time.AddSeconds(2)).Candidate is null,
+    "an observer cannot open an incident without a source");
+var observerBeforeSource = FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule,
+    new[] { new FleetSnapshot(observer1, time.AddSeconds(2), "observer-first"),
+        new FleetSnapshot(FleetHeartbeat("source-01", "source", "lab-run-1", time, false), time, "healthy-source") },
+    null, time.AddSeconds(2));
+Check(observerBeforeSource.Candidate is null,
+    "an observer sorting before a healthy source cannot open a fleet incident");
+var first = FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule,
+    new[] { new FleetSnapshot(root, time, "root-trace") }, null, time);
+Check(first.Candidate is { FleetEvidence.Count: 1 }, "source opens one fleet incident");
+var firstIncident = first.Candidate!;
+var all = new[]
+{
+    new FleetSnapshot(observer2, time.AddSeconds(3), "observer-trace-2"),
+    new FleetSnapshot(independent, time.AddSeconds(3), "unrelated-trace"),
+    new FleetSnapshot(root, time, "root-trace"),
+    new FleetSnapshot(observer1, time.AddSeconds(2), "observer-trace-1")
+};
+var cascade = FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule, all, firstIncident, time.AddSeconds(3));
+Check(cascade.Candidate?.FleetEvidence.Count == 3 && cascade.Candidate.Signals.Count == 7,
+    "one incident contains source and both observers");
+Check(cascade.Candidate!.FleetEvidence.All(e => e.AgentId != independent.AgentId), "other service identity is separate");
+Check(cascade.Candidate.FleetEvidence.Select(e => e.AgentId).SequenceEqual(new[] { "observer-01", "observer-02", "source-01" }),
+    "fleet evidence order is deterministic");
+Check(cascade.Candidate.FleetEvidence.Single(e => e.AgentId == "observer-01").TraceId == "observer-trace-1",
+    "each observer keeps its own trace");
+
+var recovering = new[]
+{
+    new FleetSnapshot(FleetHeartbeat("source-01", "source", "lab-run-1", time.AddSeconds(5), false), time.AddSeconds(5), "source-recovery"),
+    new FleetSnapshot(FleetHeartbeat("observer-01", "observer", "lab-run-1", time.AddSeconds(5), false), time.AddSeconds(5), "observer-recovery"),
+    new FleetSnapshot(observer2, time.AddSeconds(3), "observer-trace-2")
+};
+var partiallyRecovered = FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule, recovering, cascade.Candidate, time.AddSeconds(5));
+Check(partiallyRecovered.Candidate is not null && !partiallyRecovered.Recovered &&
+      partiallyRecovered.Candidate.FleetEvidence.Count(e => e.Active) == 1, "partial recovery stays open");
+Check(!FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule, recovering.Take(2).ToArray(),
+    partiallyRecovered.Candidate, time.AddSeconds(40)).Recovered, "missing observations do not close incident");
+var allHealthy = recovering.Take(2).Append(new FleetSnapshot(
+    FleetHeartbeat("observer-02", "observer", "lab-run-1", time.AddSeconds(6), false),
+    time.AddSeconds(6), "observer-recovery-2")).ToArray();
+var recoveredFleet = FleetCorrelationEngine.Evaluate("lab-run-1", fleetRule, allHealthy,
+    partiallyRecovered.Candidate, time.AddSeconds(6));
+Check(recoveredFleet.Recovered && recoveredFleet.Candidate!.FleetEvidence.All(e => !e.Active),
+    "complete fresh recovery closes fleet incident");
+
 Console.WriteLine("PASS: correlation rule checks");
+
+static AgentHeartbeatRequest FleetHeartbeat(string id, string role, string service, DateTimeOffset timestamp, bool failed) => new()
+{
+    AgentId = id, MachineName = id, FleetRole = role, FleetServiceId = service,
+    FleetRuleId = "demo-application", TimestampUtc = timestamp,
+    MonitoredProcesses = role == "source"
+        ? new() { new ProcessMetric { Name = "OpsForge.DemoService", Running = !failed } } : new(),
+    Probes = new()
+    {
+        new ProbeMetric { Id = "demo-tcp", Type = "TCP", Target = "demo:5091", CheckedUtc = timestamp, Success = !failed },
+        new ProbeMetric { Id = "demo-http", Type = "HTTP", Target = "http://demo/health", CheckedUtc = timestamp, Success = !failed }
+    }
+};
 
 static void Check(bool condition, string description)
 {

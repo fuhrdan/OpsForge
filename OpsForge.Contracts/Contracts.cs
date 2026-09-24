@@ -52,6 +52,10 @@ public sealed class AgentHeartbeatRequest
     public string EnvironmentName { get; set; } = string.Empty;
     public string OperatingSystem { get; set; } = string.Empty;
     public string AgentVersion { get; set; } = string.Empty;
+    // Agents observing the same configured service use the same ID and correlation rule.
+    public string FleetServiceId { get; set; } = string.Empty;
+    public string FleetRuleId { get; set; } = string.Empty;
+    public string FleetRole { get; set; } = string.Empty;
     public DateTimeOffset TimestampUtc { get; set; }
     public double CpuPercent { get; set; }
     public double MemoryUsedPercent { get; set; }
@@ -163,6 +167,8 @@ public sealed class PrimaryIncidentDto
 {
     public string Id { get; set; } = string.Empty;
     public string TraceId { get; set; } = string.Empty;
+    public string FleetServiceId { get; set; } = string.Empty;
+    public List<FleetEvidenceDto> FleetEvidence { get; set; } = new();
     public string CorrelationKey { get; set; } = string.Empty;
     public string AgentId { get; set; } = string.Empty;
     public string Severity { get; set; } = string.Empty;
@@ -186,6 +192,19 @@ public sealed class PrimaryIncidentDto
     public DateTimeOffset? AssignedUtc { get; set; }
     public bool MaintenanceSuppressed { get; set; }
     public string MaintenanceWindowName { get; set; } = string.Empty;
+}
+
+public sealed class FleetEvidenceDto
+{
+    public string AgentId { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string Role { get; set; } = string.Empty;
+    public string TraceId { get; set; } = string.Empty;
+    public string RecoveryTraceId { get; set; } = string.Empty;
+    public DateTimeOffset FirstSeenUtc { get; set; }
+    public DateTimeOffset LastSeenUtc { get; set; }
+    public bool Active { get; set; }
+    public List<CorrelatedSignalDto> Signals { get; set; } = new();
 }
 
 

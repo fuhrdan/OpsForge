@@ -247,3 +247,9 @@ progress::-moz-progress-bar { background: linear-gradient(90deg,#1c8eb2,#55d5ed)
   .maintenance-form .wide { grid-column: auto; }
   .panel { padding: .8rem; border-radius: 10px; }
 }
+
+.fleet-evidence { margin-top: .8rem; padding: .85rem; border: 1px solid var(--line); border-radius: 9px; }
+.fleet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: .65rem; margin-top: .6rem; }
+.fleet-node { display: grid; gap: .2rem; min-width: 0; padding: .65rem; border: 1px solid var(--line); border-radius: 7px; }
+.fleet-node span, .fleet-node small { color: var(--muted); }
+.fleet-node code { overflow-wrap: anywhere; }

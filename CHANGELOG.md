@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.0
+
+- Correlate an explicitly identified service across a source agent and observing agents into one fleet primary incident. Independent services and unrelated warnings stay separate.
+- Persist each affected agent's opening and recovery trace IDs, signals, and active status in SQLite schema 9.0. Restore last agent snapshots on restart and require fresh complete recovery from each affected agent.
+- Show fleet evidence in the dashboard and incident report. Validate service/rule/role tags on authenticated heartbeats and allow remote agents to declare their service role in configuration.
+- Extend ChaosLab and deterministic checks with multi-agent outages, and exercise database restart and partial recovery in the full-build smoke test.
+
 ## v0.9.0
 
 - Instrument agent heartbeat cycles, HTTP probes, server requests and correlation, and demo HTTP requests with OpenTelemetry and W3C trace propagation.

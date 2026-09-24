@@ -13,13 +13,13 @@ namespace OpsForge.Agent;
 
 internal static class Program
 {
-    private const string Version = "0.9.0";
+    private const string Version = "1.0.0";
     private static readonly ActivitySource HeartbeatSource = new(TraceSources.Agent);
 
     public static async Task Main()
     {
-        Console.Title = "OpsForge Agent v0.9.0";
-        Console.WriteLine("OpsForge Agent v0.9.0");
+        Console.Title = "OpsForge Agent v1.0.0";
+        Console.WriteLine("OpsForge Agent v1.0.0");
         Console.WriteLine("Authenticated telemetry, optional mTLS identity, Windows services, HTTP/TCP/DNS probes, and constrained commands.");
         Console.WriteLine();
 
@@ -87,6 +87,9 @@ internal static class Program
             try
             {
                 var heartbeat = await collector.CollectAsync(agentId, Version, displayName, site, environmentName);
+                heartbeat.FleetServiceId = options.FleetServiceId;
+                heartbeat.FleetRuleId = options.FleetRuleId;
+                heartbeat.FleetRole = options.FleetRole;
                 using var response = await http.PostAsJsonAsync("api/agents/heartbeat", heartbeat);
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                     throw new InvalidOperationException("Server rejected the agent credential and/or bound client certificate. Rotate/re-enroll the credential or verify the mTLS certificate binding.");
@@ -295,6 +298,9 @@ internal sealed class AgentOptions
     public string DisplayName { get; set; } = string.Empty;
     public string Site { get; set; } = "Local Lab";
     public string EnvironmentName { get; set; } = "lab";
+    public string FleetServiceId { get; set; } = string.Empty;
+    public string FleetRuleId { get; set; } = string.Empty;
+    public string FleetRole { get; set; } = string.Empty;
     public string ApiKey { get; set; } = string.Empty;
     public string EnrollmentToken { get; set; } = string.Empty;
     public string CredentialsFile { get; set; } = string.Empty;
