@@ -1,0 +1,14 @@
+{
+  "version": "1.1.0",
+  "base": "fuhrdan/OpsForge main (v1.0.0 at packaging time)",
+  "files": [
+    "OpsForge.Agent/SystemMetricsCollector.cs",
+    "OpsForge.Agent/appsettings.linux-example.json",
+    "linux/opsforge-agent.service",
+    "linux/install-agent.sh",
+    "linux/publish-agent.sh",
+    "docs/LINUX-AGENT.md",
+    "v1.1.0.patch",
+    "APPLY-AND-GITHUB.md"
+  ]
+}

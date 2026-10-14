@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Write-Host 'OpsForge v1.0.0 full-build smoke test' -ForegroundColor Cyan
+Write-Host 'OpsForge v1.1.0 full-build smoke test' -ForegroundColor Cyan
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'dotnet SDK not found; build portion cannot run.' -ForegroundColor Yellow; exit 2 }
 
 dotnet build .\OpsForge.sln

@@ -1,0 +1,26 @@
+[Unit]
+Description=OpsForge Cross-Platform Monitoring Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opsforge
+Group=opsforge
+WorkingDirectory=/opt/opsforge-agent
+ExecStart=/opt/opsforge-agent/OpsForge.Agent
+Environment=DOTNET_ENVIRONMENT=Production
+Environment=OPSFORGE_AGENT_CREDENTIALS=/var/lib/opsforge/agent.credentials.json
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/opsforge
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
