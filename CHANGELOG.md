@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.1.0
+
+- Added first-class Linux agent telemetry while preserving the existing Windows agent and server heartbeat protocol.
+- Added Linux CPU utilization from `/proc/stat`.
+- Added Linux memory utilization from `/proc/meminfo`.
+- Added Linux uptime from `/proc/uptime`.
+- Added systemd service monitoring through bounded `systemctl show` queries.
+- Added Linux x64 and ARM64 publishing support.
+- Added Linux example configuration, systemd service definition, installer, and deployment documentation.
+- Preserved authentication, enrollment, optional mTLS, OpenTelemetry, correlation, fleet identity, probes, and evidence-based recovery behavior.
+
 ## v1.0.0
 
 - Correlate an explicitly identified service across a source agent and observing agents into one fleet primary incident. Independent services and unrelated warnings stay separate.

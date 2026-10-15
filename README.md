@@ -1,6 +1,6 @@
 # OpsForge
 
-**A .NET 8 IT operations and incident-response platform for monitoring distributed Windows systems, correlating failures, managing incidents, and measuring service reliability.**
+**A .NET 8 IT operations and incident-response platform for monitoring distributed Windows and Linux systems, correlating failures, managing incidents, and measuring service reliability.**
 
 [![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet\&logoColor=white)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
