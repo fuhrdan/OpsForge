@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.0
+
+- Route correlated Primary Incident lifecycle events to outbound notifications instead of alerting independently on derivative symptoms.
+- Add asynchronous bounded notification queueing so slow external destinations cannot block heartbeat ingestion.
+- Add generic JSON webhooks plus Slack-compatible and Microsoft Teams-compatible webhook formats.
+- Add optional SMTP email delivery with passwords sourced from environment variables rather than repository configuration.
+- Add severity, event-type, agent, fleet-service, cooldown, and maintenance-suppression routing controls.
+- Add unacknowledged-incident escalation after a configurable threshold.
+- Persist delivery attempts and outcomes in SQLite schema 10.0 and expose Viewer history plus Administrator redacted route status.
+- Add administrator notification test endpoint and deterministic notification-routing checks.
+- Keep all notification routes disabled by default until explicitly configured.
 ## v1.1.0
 
 - Added first-class Linux agent telemetry while preserving the existing Windows agent and server heartbeat protocol.

@@ -14,11 +14,13 @@ public sealed class TelemetryStore
     private readonly object _fleetGate = new();
     private readonly SqliteRepository _repository;
     private readonly CorrelationOptions _correlation;
+    private readonly NotificationQueue _notifications;
 
-    public TelemetryStore(SqliteRepository repository, CorrelationOptions correlation)
+    public TelemetryStore(SqliteRepository repository, CorrelationOptions correlation, NotificationQueue notifications)
     {
         _repository = repository;
         _correlation = correlation;
+        _notifications = notifications;
         foreach (var snapshot in repository.GetAgentSnapshots())
             _agents[snapshot.Heartbeat.AgentId] = new AgentState(snapshot.Heartbeat, snapshot.LastSeenUtc, snapshot.TraceId);
     }
@@ -273,7 +275,10 @@ public sealed class TelemetryStore
         var now = DateTimeOffset.UtcNow;
         _repository.AcknowledgeIncident(incident.Id, username, note, now);
         _repository.AddTimelineEvent(incident.AgentId, "primary-incident", incident.Id, "Acknowledged", $"Acknowledged: {incident.Title}", string.IsNullOrWhiteSpace(note) ? $"Acknowledged by {username}." : $"Acknowledged by {username}. {note}", now);
-        return GetPrimaryIncidents().FirstOrDefault(i => string.Equals(i.Id, incidentId, StringComparison.OrdinalIgnoreCase));
+        var updated = GetPrimaryIncidents().FirstOrDefault(i => string.Equals(i.Id, incidentId, StringComparison.OrdinalIgnoreCase));
+        if (updated is not null)
+            _notifications.Enqueue(NotificationEnvelope.FromPrimary("Acknowledged", updated, now, username));
+        return updated;
     }
 
     public PrimaryIncidentDto? AssignPrimaryIncident(string incidentId, string ownerUsername, string ownerDisplayName, string assignedBy, string note)
@@ -283,7 +288,10 @@ public sealed class TelemetryStore
         var now = DateTimeOffset.UtcNow;
         _repository.AssignIncident(incident.Id, ownerUsername, ownerDisplayName, note, now);
         _repository.AddTimelineEvent(incident.AgentId, "primary-incident", incident.Id, "Assigned", $"Owner assigned: {incident.Title}", string.IsNullOrWhiteSpace(note) ? $"{assignedBy} assigned incident ownership to {ownerDisplayName} ({ownerUsername})." : $"{assignedBy} assigned incident ownership to {ownerDisplayName} ({ownerUsername}). {note}", now);
-        return GetPrimaryIncidents().FirstOrDefault(i => string.Equals(i.Id, incidentId, StringComparison.OrdinalIgnoreCase));
+        var updated = GetPrimaryIncidents().FirstOrDefault(i => string.Equals(i.Id, incidentId, StringComparison.OrdinalIgnoreCase));
+        if (updated is not null)
+            _notifications.Enqueue(NotificationEnvelope.FromPrimary("Assigned", updated, now, assignedBy));
+        return updated;
     }
 
     public PrimaryIncidentDto? UnassignPrimaryIncident(string incidentId, string actor, string note)
@@ -551,6 +559,7 @@ public sealed class TelemetryStore
             evaluationSpan?.AddEvent(new ActivityEvent("fleet.incident.correlated"));
             _repository.AddTimelineEvent(candidate.AgentId, "primary-incident", candidate.Id, "Correlated",
                 candidate.Title, $"Fleet service {candidate.FleetServiceId}: {candidate.Summary}", now);
+            _notifications.Enqueue(NotificationEnvelope.FromPrimary("Opened", candidate, now));
             return;
         }
 
@@ -564,6 +573,9 @@ public sealed class TelemetryStore
             _repository.ResolvePrimaryIncident(candidate.Id, now, candidate.Summary);
             _repository.AddTimelineEvent(candidate.AgentId, "primary-incident", candidate.Id, "Resolved",
                 $"Resolved: {candidate.Title}", candidate.Summary, now);
+            candidate.Active = false;
+            candidate.ResolvedUtc = now;
+            _notifications.Enqueue(NotificationEnvelope.FromPrimary("Resolved", candidate, now));
         }
         else if (!string.Equals(oldSignature, FleetSignature(candidate), StringComparison.Ordinal))
         {
@@ -615,6 +627,7 @@ public sealed class TelemetryStore
                     candidate.Title,
                     $"{candidate.Summary} Probable root cause: {candidate.ProbableRootCause} Confidence: {candidate.Confidence} ({candidate.ConfidenceScore:P0}).",
                     now);
+                _notifications.Enqueue(NotificationEnvelope.FromPrimary("Opened", candidate, now));
                 return;
             }
 
@@ -657,6 +670,10 @@ public sealed class TelemetryStore
                 $"Resolved: {existing.Title}",
                 $"{resolution} Correlated MTTR {FormatDuration(duration)}.",
                 now);
+            existing.Active = false;
+            existing.ResolvedUtc = now;
+            existing.Summary = resolution;
+            _notifications.Enqueue(NotificationEnvelope.FromPrimary("Resolved", existing, now));
         }
     }
 

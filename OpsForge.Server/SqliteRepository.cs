@@ -30,7 +30,7 @@ public sealed class SqliteRepository
     }
 
     public string DatabaseLabel => "data/opsforge.db";
-    public string SchemaVersion => "9.0";
+    public string SchemaVersion => "10.0";
 
     public IReadOnlyList<PersistedAgentSnapshot> GetAgentSnapshots()
     {
