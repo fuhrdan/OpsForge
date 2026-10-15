@@ -1,0 +1,59 @@
+diff --git a/Directory.Build.props b/Directory.Build.props
+--- a/Directory.Build.props
++++ b/Directory.Build.props
+@@
+-    <Version>1.0.0</Version>
++    <Version>1.1.0</Version>
+diff --git a/OpsForge.Agent/Program.cs b/OpsForge.Agent/Program.cs
+--- a/OpsForge.Agent/Program.cs
++++ b/OpsForge.Agent/Program.cs
+@@
+-    private const string Version = "1.0.0";
++    private const string Version = "1.1.0";
+@@
+-        Console.Title = "OpsForge Agent v1.0.0";
+-        Console.WriteLine("OpsForge Agent v1.0.0");
+-        Console.WriteLine("Authenticated telemetry, optional mTLS identity, Windows services, HTTP/TCP/DNS probes, and constrained commands.");
++        Console.Title = "OpsForge Agent v1.1.0";
++        Console.WriteLine("OpsForge Agent v1.1.0");
++        Console.WriteLine("Authenticated cross-platform telemetry, optional mTLS identity, Windows/systemd services, HTTP/TCP/DNS probes, and constrained commands.");
+diff --git a/OpsForge.Agent/OpsForge.Agent.csproj b/OpsForge.Agent/OpsForge.Agent.csproj
+--- a/OpsForge.Agent/OpsForge.Agent.csproj
++++ b/OpsForge.Agent/OpsForge.Agent.csproj
+@@
+     <None Update="appsettings.remote-example.json">
+       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+     </None>
++    <None Update="appsettings.linux-example.json">
++      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
++    </None>
+   </ItemGroup>
+ </Project>
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@
+-**A .NET 8 IT operations and incident-response platform for monitoring distributed Windows systems, correlating failures, managing incidents, and measuring service reliability.**
++**A .NET 8 IT operations and incident-response platform for monitoring distributed Windows and Linux systems, correlating failures, managing incidents, and measuring service reliability.**
+@@
+-[![Version](https://img.shields.io/badge/version-v1.0.0-blue)](CHANGELOG.md)
++[![Version](https://img.shields.io/badge/version-v1.1.0-blue)](CHANGELOG.md)
+@@
+ * Windows process and service telemetry
++* Linux process, /proc CPU/memory/uptime telemetry, and systemd service monitoring
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@
+ # Changelog
++
++## v1.1.0
++
++- Add first-class Linux agent telemetry while preserving the existing Windows agent protocol and server compatibility.
++- Read Linux CPU utilization from `/proc/stat`, memory pressure from `/proc/meminfo`, and host uptime from `/proc/uptime`.
++- Monitor systemd services through a bounded `systemctl show` query and normalize common Linux service states to the existing OpsForge service-state model.
++- Keep HTTP, TCP, DNS, process, drive, network, authentication, mTLS, tracing, correlation, and fleet-service identity behavior shared across Windows and Linux.
++- Add a Linux example configuration, publish helper, hardened systemd unit, and installer.
++- Preserve Windows `ServiceController`, `GetSystemTimes`, and `GlobalMemoryStatusEx` behavior without changing the server heartbeat contract.
+
+ ## v1.0.0
