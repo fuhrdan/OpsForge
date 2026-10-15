@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Write-Host 'OpsForge v1.1.0 full-build smoke test' -ForegroundColor Cyan
+Write-Host 'OpsForge v1.2.0 full-build smoke test' -ForegroundColor Cyan
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'dotnet SDK not found; build portion cannot run.' -ForegroundColor Yellow; exit 2 }
 
 dotnet build .\OpsForge.sln
@@ -27,7 +27,7 @@ try {
     catch { Start-Sleep -Milliseconds 500 }
   }
   if(-not $ready){ throw 'OpsForge.Server did not become ready.' }
-  if($health.version -ne '1.0.0' -or $health.schemaVersion -ne '9.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
+  if($health.version -ne '1.2.0' -or $health.schemaVersion -ne '10.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
 
   # Bootstrap administrator and remove the temporary credential file.
   $bootstrapPath=Join-Path $testRoot 'data\security\admin-bootstrap.txt'
@@ -151,15 +151,27 @@ try {
     if(-not ($audit | Where-Object action -eq $expected)){ throw "Audit log missing $expected event." }
   }
 
-  # One source and two observers report the same service; an unrelated warning stays separate.
+  # v1.2 notification engine exists but sends nothing until explicitly enabled.
+  $notificationStatus=Invoke-RestMethod -Uri "$base/api/notifications/status" -WebSession $adminSession
+  if($notificationStatus.enabled -ne $false){ throw 'Fresh notification configuration should be disabled by default.' }
+ $notificationRows=@(Get-ApiRows "$base/api/notifications" $viewerSession)
+
+if($notificationRows.Count -ne 0){
+    throw "Disabled notification engine unexpectedly produced $($notificationRows.Count) deliveries."
+}  # One source and two observers report the same service; an unrelated warning stays separate.
   $fleetNodes=@()
   for($i=1;$i -le 4;$i++){
     $id='fleet-smoke-{0:d2}' -f $i
     $created=Invoke-RestMethod -Method Post -Uri "$base/api/enrollment/agents" -Headers $enrollHeaders -ContentType 'application/json' -Body (@{agentId=$id;displayName=$id;site='Test';environmentName='lab'}|ConvertTo-Json)
     $fleetNodes+=@{Id=$id;Key=$created.apiKey;Index=$i}
   }
+  $script:fleetHeartbeatSequence = 0
+$script:fleetHeartbeatBase = [DateTime]::UtcNow
   function Send-FleetHeartbeat($node,[bool]$failed){
-    $stamp=[DateTime]::UtcNow.ToString('o')
+  $script:fleetHeartbeatSequence++
+$stamp=$script:fleetHeartbeatBase.AddMilliseconds(
+    $script:fleetHeartbeatSequence * 100
+).ToString('o')  
     $affected=$failed -and $node.Index -le 3
     $body=@{
       agentId=$node.Id;machineName=$node.Id;displayName=$node.Id;site='Test';environmentName='lab'
@@ -198,7 +210,7 @@ try {
     try{$health=Invoke-RestMethod "$base/api/health";$ready=$true;break}
     catch{Start-Sleep -Milliseconds 500}
   }
-  if(-not $ready -or $health.schemaVersion -ne '9.0'){throw 'Fleet server did not restart on schema 9.'}
+  if(-not $ready -or $health.schemaVersion -ne '10.0'){throw 'Fleet server did not restart on schema 10.'}
   $afterRestart=Get-ApiRows "$base/api/primary-incidents" $operatorSession|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
   if(-not $afterRestart.active -or @($afterRestart.fleetEvidence).Count -ne 3){throw 'Fleet incident or evidence was lost on restart.'}
   Send-FleetHeartbeat $fleetNodes[0] $false
@@ -209,7 +221,7 @@ try {
   $closed=Get-ApiRows "$base/api/primary-incidents" $operatorSession|Where-Object {$_.id -eq $fleet.id}|Select-Object -First 1
   if($closed.active -or @($closed.fleetEvidence|Where-Object {$_.active}).Count -ne 0){throw 'Fresh recovery did not resolve the fleet incident.'}
 
-  Write-Host 'PASS: build, schema 9, bootstrap/RBAC, agent auth, fleet correlation, trace context, restart/recovery, acknowledgement, ownership, maintenance suppression, SLA analytics, telemetry history, and audit.' -ForegroundColor Green
+  Write-Host 'PASS: build, schema 10, bootstrap/RBAC, agent auth, fleet correlation, trace context, restart/recovery, acknowledgement, ownership, maintenance suppression, SLA analytics, telemetry history, and audit.' -ForegroundColor Green
 }
 finally {
   if($server -and -not $server.HasExited){ Stop-Process -Id $server.Id -Force }

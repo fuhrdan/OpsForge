@@ -6,7 +6,7 @@
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-v1.0.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.2.0-blue)](CHANGELOG.md)
 [![OpsForge CI](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml)
 
 **Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**
@@ -79,6 +79,7 @@ The ADRs document decisions already implemented by OpsForge rather than aspirati
 * Security-conscious agent enrollment and key rotation
 * Optional certificate-bound agent identity
 * Distributed HTTP tracing with optional OTLP export
+* Notification routing, escalation, delivery history, generic webhooks, Slack/Teams-compatible webhooks, and SMTP email
 
 ---
 

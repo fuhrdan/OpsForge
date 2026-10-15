@@ -30,8 +30,13 @@ builder.Services.AddSingleton<AgentRegistry>();
 var correlationOptions = builder.Configuration.GetSection("Correlation").Get<CorrelationOptions>() ?? new CorrelationOptions();
 correlationOptions.Validate();
 builder.Services.AddSingleton(correlationOptions);
+builder.Services.AddSingleton<NotificationConfiguration>(_ => NotificationConfiguration.Load(AppContext.BaseDirectory));
+builder.Services.AddSingleton<NotificationQueue>();
+builder.Services.AddSingleton<NotificationStore>();
 builder.Services.AddSingleton<TelemetryStore>();
 builder.Services.AddSingleton<ReliabilityService>();
+builder.Services.AddHostedService<NotificationDispatcher>();
+builder.Services.AddHostedService<NotificationEscalationService>();
 var tracing = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("OpsForge.Server"))
     .WithTracing(provider => provider.AddAspNetCoreInstrumentation().AddSource(TraceSources.Server));
@@ -51,7 +56,7 @@ if (!string.IsNullOrWhiteSpace(otlpEndpoint))
 var app = builder.Build();
 var secrets = app.Services.GetRequiredService<SecuritySecrets>();
 var identity = app.Services.GetRequiredService<OperatorIdentity>();
-Console.WriteLine($"OpsForge v1.0.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
+Console.WriteLine($"OpsForge v1.2.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
 Console.WriteLine(File.Exists(secrets.BootstrapAdminPath)
     ? $"Initial administrator credentials (first run only): {secrets.BootstrapAdminPath}"
     : "Initial administrator bootstrap credentials have already been consumed.");
@@ -74,7 +79,7 @@ app.MapGet("/api/health", (SqliteRepository repository) => Results.Ok(new
 {
     ok = true,
     service = "OpsForge Server",
-    version = "1.0.0",
+    version = "1.2.0",
     persistence = repository.DatabaseLabel,
     correlationEngine = "configurable-window-v3",
     topologyEngine = "dynamic-multinode-v1",
@@ -245,6 +250,48 @@ app.MapGet("/api/timeline", (HttpContext context, OperatorIdentity auth, Telemet
 app.MapGet("/api/commands", (HttpContext context, OperatorIdentity auth, TelemetryStore store) => ReadAccess(context, auth, () => Results.Ok(store.GetCommands())));
 app.MapGet("/api/topology", (HttpContext context, OperatorIdentity auth, TelemetryStore store) => ReadAccess(context, auth, () => Results.Ok(store.GetTopology())));
 app.MapGet("/api/operator-summary", (HttpContext context, OperatorIdentity auth, TelemetryStore store) => ReadAccess(context, auth, () => Results.Ok(store.GetOperatorSummary())));
+
+app.MapGet("/api/notifications", (HttpContext context, int? limit, OperatorIdentity auth, NotificationStore notifications) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Viewer, false);
+    return access.Failure ?? Results.Ok(notifications.GetDeliveries(limit ?? 200));
+});
+
+app.MapGet("/api/notifications/status", (HttpContext context, OperatorIdentity auth, NotificationConfiguration notifications) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, false);
+    return access.Failure ?? Results.Ok(notifications.GetStatus());
+});
+
+app.MapPost("/api/notifications/test", (HttpContext context, NotificationTestRequest request, OperatorIdentity auth,
+    NotificationConfiguration configuration, NotificationQueue queue) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, true);
+    if (access.Failure is not null) return access.Failure;
+
+    var route = configuration.Routes.FirstOrDefault(r =>
+        string.Equals(r.Id, request.RouteId, StringComparison.OrdinalIgnoreCase));
+    if (route is null) return Results.NotFound(new { error = "Notification route not found." });
+    if (!route.Enabled) return Results.BadRequest(new { error = "Notification route is disabled." });
+
+    var test = new NotificationEnvelope
+    {
+        EventType = route.EventTypes.FirstOrDefault() ?? "Opened",
+        TargetRouteId = route.Id,
+        IncidentId = $"test-{Guid.NewGuid():N}",
+        CorrelationKey = "test:notification",
+        AgentId = "opsforge-server",
+        Severity = "critical",
+        Title = "OpsForge notification test",
+        Summary = $"Test notification requested for route {route.Id}.",
+        ProbableRootCause = "Operator-requested notification test.",
+        Actor = access.Principal!.Username,
+        OccurredUtc = DateTimeOffset.UtcNow
+    };
+
+    queue.Enqueue(test);
+    return Results.Accepted(value: new { queued = true, routeId = route.Id, test.IncidentId });
+});
 
 app.MapGet("/api/reliability", (HttpContext context, int? hours, double? slaTarget, OperatorIdentity auth, ReliabilityService reliability) =>
 {

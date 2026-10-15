@@ -1,0 +1,71 @@
+{
+  "notification": {
+    "enabled": false,
+    "defaultCooldownSeconds": 300,
+    "escalationSeconds": 900,
+    "smtp": {
+      "host": "",
+      "port": 587,
+      "enableSsl": true,
+      "username": "",
+      "passwordEnvironmentVariable": "OPSFORGE_SMTP_PASSWORD",
+      "fromAddress": "",
+      "fromDisplayName": "OpsForge"
+    },
+    "routes": [
+      {
+        "id": "critical-generic-webhook",
+        "enabled": false,
+        "channelType": "webhook",
+        "format": "generic",
+        "targetEnvironmentVariable": "OPSFORGE_NOTIFY_WEBHOOK",
+        "eventTypes": [
+          "Opened",
+          "Resolved",
+          "Escalated"
+        ],
+        "minimumSeverity": "critical",
+        "agentIds": [],
+        "fleetServiceIds": [],
+        "cooldownSeconds": 300,
+        "suppressDuringMaintenance": true
+      },
+      {
+        "id": "slack-operations",
+        "enabled": false,
+        "channelType": "webhook",
+        "format": "slack",
+        "targetEnvironmentVariable": "OPSFORGE_SLACK_WEBHOOK",
+        "eventTypes": [
+          "Opened",
+          "Resolved",
+          "Acknowledged",
+          "Assigned",
+          "Escalated"
+        ],
+        "minimumSeverity": "warning",
+        "agentIds": [],
+        "fleetServiceIds": [],
+        "cooldownSeconds": 300,
+        "suppressDuringMaintenance": true
+      },
+      {
+        "id": "teams-operations",
+        "enabled": false,
+        "channelType": "webhook",
+        "format": "teams",
+        "targetEnvironmentVariable": "OPSFORGE_TEAMS_WEBHOOK",
+        "eventTypes": [
+          "Opened",
+          "Resolved",
+          "Escalated"
+        ],
+        "minimumSeverity": "warning",
+        "agentIds": [],
+        "fleetServiceIds": [],
+        "cooldownSeconds": 300,
+        "suppressDuringMaintenance": true
+      }
+    ]
+  }
+}
