@@ -31,12 +31,15 @@ var correlationOptions = builder.Configuration.GetSection("Correlation").Get<Cor
 correlationOptions.Validate();
 builder.Services.AddSingleton(correlationOptions);
 builder.Services.AddSingleton<NotificationConfiguration>(_ => NotificationConfiguration.Load(AppContext.BaseDirectory));
+builder.Services.AddSingleton<SloConfiguration>(_ => SloConfiguration.Load(AppContext.BaseDirectory));
 builder.Services.AddSingleton<NotificationQueue>();
 builder.Services.AddSingleton<NotificationStore>();
 builder.Services.AddSingleton<TelemetryStore>();
 builder.Services.AddSingleton<ReliabilityService>();
+builder.Services.AddSingleton<SloService>();
 builder.Services.AddHostedService<NotificationDispatcher>();
 builder.Services.AddHostedService<NotificationEscalationService>();
+builder.Services.AddHostedService<SloBurnRateMonitor>();
 var tracing = builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("OpsForge.Server"))
     .WithTracing(provider => provider.AddAspNetCoreInstrumentation().AddSource(TraceSources.Server));
@@ -56,7 +59,7 @@ if (!string.IsNullOrWhiteSpace(otlpEndpoint))
 var app = builder.Build();
 var secrets = app.Services.GetRequiredService<SecuritySecrets>();
 var identity = app.Services.GetRequiredService<OperatorIdentity>();
-Console.WriteLine($"OpsForge v1.2.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
+Console.WriteLine($"OpsForge v1.3.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
 Console.WriteLine(File.Exists(secrets.BootstrapAdminPath)
     ? $"Initial administrator credentials (first run only): {secrets.BootstrapAdminPath}"
     : "Initial administrator bootstrap credentials have already been consumed.");
@@ -79,11 +82,11 @@ app.MapGet("/api/health", (SqliteRepository repository) => Results.Ok(new
 {
     ok = true,
     service = "OpsForge Server",
-    version = "1.2.0",
+    version = "1.3.0",
     persistence = repository.DatabaseLabel,
     correlationEngine = "configurable-window-v3",
     topologyEngine = "dynamic-multinode-v1",
-    reliabilityEngine = "historical-sla-v1",
+    reliabilityEngine = "slo-burnrate-v2",
     securityModel = "rbac-sessions-agent-mtls-v1",
     schemaVersion = repository.SchemaVersion,
     timeUtc = DateTimeOffset.UtcNow
@@ -297,6 +300,25 @@ app.MapGet("/api/reliability", (HttpContext context, int? hours, double? slaTarg
 {
     var access = Authorize(context, auth, OpsForgeRoles.Viewer, false);
     return access.Failure ?? Results.Ok(reliability.GetDashboard(hours ?? 24, slaTarget ?? 99.9));
+});
+app.MapGet("/api/slos", (HttpContext context, OperatorIdentity auth, SloService slo) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Viewer, false);
+    return access.Failure ?? Results.Ok(slo.GetEvaluations());
+});
+
+app.MapGet("/api/slos/{id}", (HttpContext context, string id, OperatorIdentity auth, SloService slo) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Viewer, false);
+    if (access.Failure is not null) return access.Failure;
+    var evaluation = slo.GetEvaluation(id);
+    return evaluation is null ? Results.NotFound(new { error = "Enabled SLO not found." }) : Results.Ok(evaluation);
+});
+
+app.MapGet("/api/slos/status", (HttpContext context, OperatorIdentity auth, SloConfiguration slo) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, false);
+    return access.Failure ?? Results.Ok(slo.GetStatus());
 });
 
 app.MapGet("/api/agents/{agentId}/history", (HttpContext context, string agentId, int? hours, OperatorIdentity auth, ReliabilityService reliability, AgentRegistry registry) =>

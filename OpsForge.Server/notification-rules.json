@@ -41,7 +41,9 @@
           "Resolved",
           "Acknowledged",
           "Assigned",
-          "Escalated"
+          "Escalated",
+          "SloBurnRate",
+          "SloRecovered"
         ],
         "minimumSeverity": "warning",
         "agentIds": [],

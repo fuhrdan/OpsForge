@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.0
+
+- Add declarative SLO definitions with objective, compliance window, and agent scope.
+- Compute maintenance-aware error-budget consumption from existing telemetry.
+- Add multi-window burn-rate evaluation and transition-based `SloBurnRate` / `SloRecovered` notifications.
+- Add Viewer SLO evaluation APIs, Administrator status, deterministic checks, and smoke coverage.
+- Keep sample SLOs disabled by default and preserve SQLite schema 10.0.
+
 ## v1.2.0
 
 - Route correlated Primary Incident lifecycle events to outbound notifications instead of alerting independently on derivative symptoms.
