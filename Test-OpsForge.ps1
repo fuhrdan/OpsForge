@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Write-Host 'OpsForge v1.2.0 full-build smoke test' -ForegroundColor Cyan
+Write-Host 'OpsForge v1.3.0 full-build smoke test' -ForegroundColor Cyan
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'dotnet SDK not found; build portion cannot run.' -ForegroundColor Yellow; exit 2 }
 
 dotnet build .\OpsForge.sln
@@ -27,7 +27,7 @@ try {
     catch { Start-Sleep -Milliseconds 500 }
   }
   if(-not $ready){ throw 'OpsForge.Server did not become ready.' }
-  if($health.version -ne '1.2.0' -or $health.schemaVersion -ne '10.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
+  if($health.version -ne '1.3.0' -or $health.schemaVersion -ne '10.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
 
   # Bootstrap administrator and remove the temporary credential file.
   $bootstrapPath=Join-Path $testRoot 'data\security\admin-bootstrap.txt'
@@ -139,6 +139,12 @@ try {
   if(-not (@($reliability.agents) | Where-Object agentId -eq 'smoke-01')){ throw 'Reliability dashboard missing smoke agent.' }
   $history=Invoke-RestMethod -Uri "$base/api/agents/smoke-01/history?hours=24" -WebSession $viewerSession
   if(@($history.points).Count -lt 1){ throw 'Historical telemetry endpoint did not return the initial sample.' }
+  # v1.3 SLO subsystem exists while the bundled sample definition stays disabled.
+  $sloStatus=Invoke-RestMethod -Uri "$base/api/slos/status" -WebSession $adminSession
+  if($sloStatus.enabled -ne $true){ throw 'SLO subsystem should be enabled.' }
+  if($sloStatus.enabledDefinitionCount -ne 0){ throw 'Bundled sample SLO should be disabled by default.' }
+  $sloRows=@(Get-ApiRows "$base/api/slos" $viewerSession)
+  if($sloRows.Count -ne 0){ throw 'Disabled sample SLO unexpectedly produced an evaluation.' }
 
   Invoke-RestMethod -Method Post -Uri "$base/api/maintenance/$($maintenance.maintenanceId)/cancel" -Headers $operatorHeaders -WebSession $operatorSession | Out-Null
   $maintenanceRows=@(Invoke-RestMethod -Uri "$base/api/maintenance" -WebSession $viewerSession)

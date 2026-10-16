@@ -13,13 +13,13 @@ namespace OpsForge.Agent;
 
 internal static class Program
 {
-    private const string Version = "1.2.0";
+    private const string Version = "1.3.0";
     private static readonly ActivitySource HeartbeatSource = new(TraceSources.Agent);
 
     public static async Task Main()
     {
-        Console.Title = "OpsForge Agent v1.2.0";
-        Console.WriteLine("OpsForge Agent v1.2.0");
+        Console.Title = "OpsForge Agent v1.3.0";
+        Console.WriteLine("OpsForge Agent v1.3.0");
         Console.WriteLine("Authenticated cross-platform telemetry, optional mTLS identity, Windows/systemd services, HTTP/TCP/DNS probes, and constrained commands.");        Console.WriteLine();
 
         var options = AgentOptions.Load();

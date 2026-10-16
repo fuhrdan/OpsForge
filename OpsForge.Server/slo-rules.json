@@ -1,0 +1,21 @@
+{
+  "slo": {
+    "enabled": true,
+    "evaluationIntervalSeconds": 60,
+    "definitions": [
+      {
+        "id": "fleet-availability",
+        "name": "Fleet Availability",
+        "enabled": false,
+        "objectivePercent": 99.9,
+        "complianceWindowHours": 720,
+        "agentIds": [],
+        "burnRatePolicies": [
+          { "id": "fast", "shortWindowMinutes": 5, "longWindowMinutes": 60, "shortBurnRateThreshold": 14.4, "longBurnRateThreshold": 14.4, "severity": "critical" },
+          { "id": "medium", "shortWindowMinutes": 30, "longWindowMinutes": 360, "shortBurnRateThreshold": 6.0, "longBurnRateThreshold": 6.0, "severity": "warning" },
+          { "id": "slow", "shortWindowMinutes": 120, "longWindowMinutes": 1440, "shortBurnRateThreshold": 3.0, "longBurnRateThreshold": 3.0, "severity": "warning" }
+        ]
+      }
+    ]
+  }
+}

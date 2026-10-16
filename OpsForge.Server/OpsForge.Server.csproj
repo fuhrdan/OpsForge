@@ -12,5 +12,6 @@
   <ItemGroup>
     <Content Update="correlation-rules.json" CopyToOutputDirectory="PreserveNewest" />
     <Content Update="notification-rules.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Update="slo-rules.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
