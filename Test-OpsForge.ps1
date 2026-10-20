@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-Write-Host 'OpsForge v1.3.0 full-build smoke test' -ForegroundColor Cyan
+Write-Host 'OpsForge v1.4.0 full-build smoke test' -ForegroundColor Cyan
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { Write-Host 'dotnet SDK not found; build portion cannot run.' -ForegroundColor Yellow; exit 2 }
 
 dotnet build .\OpsForge.sln
@@ -27,7 +27,7 @@ try {
     catch { Start-Sleep -Milliseconds 500 }
   }
   if(-not $ready){ throw 'OpsForge.Server did not become ready.' }
-  if($health.version -ne '1.3.0' -or $health.schemaVersion -ne '10.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
+  if($health.version -ne '1.4.0' -or $health.schemaVersion -ne '10.0'){ throw "Unexpected version/schema: $($health.version) / $($health.schemaVersion)" }
 
   # Bootstrap administrator and remove the temporary credential file.
   $bootstrapPath=Join-Path $testRoot 'data\security\admin-bootstrap.txt'
@@ -139,6 +139,16 @@ try {
   if(-not (@($reliability.agents) | Where-Object agentId -eq 'smoke-01')){ throw 'Reliability dashboard missing smoke agent.' }
   $history=Invoke-RestMethod -Uri "$base/api/agents/smoke-01/history?hours=24" -WebSession $viewerSession
   if(@($history.points).Count -lt 1){ throw 'Historical telemetry endpoint did not return the initial sample.' }
+
+  # v1.4 correlation designer: read active rule, validate it, and dry-run it without mutation.
+  $activeRules=@(Get-ApiRows "$base/api/correlation-rules" $viewerSession)
+  if(-not ($activeRules | Where-Object { $_.id -eq 'demo-application' })){ throw 'Correlation designer did not expose demo-application.' }
+  $validationBody=@{rules=$activeRules}|ConvertTo-Json -Depth 10
+  $ruleValidation=Invoke-RestMethod -Method Post -Uri "$base/api/correlation-rules/validate" -Headers $adminHeaders -WebSession $adminSession -ContentType 'application/json' -Body $validationBody
+  if(-not $ruleValidation.valid){ throw 'Packaged correlation rules failed v1.4 validation.' }
+  $previewBody=@{agentId='smoke-01';rules=$activeRules}|ConvertTo-Json -Depth 10
+  $rulePreview=Invoke-RestMethod -Method Post -Uri "$base/api/correlation-rules/preview" -Headers $adminHeaders -WebSession $adminSession -ContentType 'application/json' -Body $previewBody
+  if(-not $rulePreview.validation.valid){ throw 'Correlation dry-run validation failed.' }
   # v1.3 SLO subsystem exists while the bundled sample definition stays disabled.
   $sloStatus=Invoke-RestMethod -Uri "$base/api/slos/status" -WebSession $adminSession
   if($sloStatus.enabled -ne $true){ throw 'SLO subsystem should be enabled.' }

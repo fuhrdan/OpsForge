@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpsForge.NotificationChecks
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpsForge.SloChecks", "OpsForge.SloChecks\OpsForge.SloChecks.csproj", "{B782FDF2-AC52-4582-8F22-6215E1BE9784}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "OpsForge.CorrelationChecks", "OpsForge.CorrelationChecks\OpsForge.CorrelationChecks.csproj", "{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -97,6 +99,18 @@ Global
 		{B782FDF2-AC52-4582-8F22-6215E1BE9784}.Release|x64.Build.0 = Release|Any CPU
 		{B782FDF2-AC52-4582-8F22-6215E1BE9784}.Release|x86.ActiveCfg = Release|Any CPU
 		{B782FDF2-AC52-4582-8F22-6215E1BE9784}.Release|x86.Build.0 = Release|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Debug|x64.Build.0 = Debug|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Debug|x86.Build.0 = Debug|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Release|x64.ActiveCfg = Release|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Release|x64.Build.0 = Release|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Release|x86.ActiveCfg = Release|Any CPU
+		{9D7FDC0F-3721-4F54-97CB-2574E284B5E6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
