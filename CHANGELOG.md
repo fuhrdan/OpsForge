@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.4.0
+
+- Add authenticated correlation rule design workflow: draft → validate → dry-run → activate.
+- Add validation for duplicate IDs, invalid windows, insufficient/overlapping selectors, and invalid thresholds.
+- Add dry-run preview against the latest enrolled-agent heartbeat without mutating live correlation.
+- Add restart-persistent active rule overrides in `data/correlation-rules.active.json`.
+- Add append-only version history in `data/correlation-rule-history.jsonl`.
+- Add import/export with SHA-256 fingerprints and auditable Administrator activation/restore.
+- Add `/correlation-rules.html` designer UI backed by authenticated APIs.
+- Add deterministic correlation rule checks and full smoke-test coverage.
+- Preserve SQLite schema 10.0 because rule history is configuration history rather than incident/telemetry persistence.
+
 ## v1.3.0
 
 - Add declarative SLO definitions with objective, compliance window, and agent scope.

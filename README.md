@@ -6,7 +6,7 @@
 [![C#](https://img.shields.io/badge/C%23-.NET_8-239120?logo=csharp\&logoColor=white)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
-[![Version](https://img.shields.io/badge/version-v1.3.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.4.0-blue)](CHANGELOG.md)
 [![OpsForge CI](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml/badge.svg)](https://github.com/fuhrdan/OpsForge/actions/workflows/ci.yml)
 
 **Distributed agents · Incident correlation · RBAC · Audit logging · Reliability analytics · Controlled remediation**

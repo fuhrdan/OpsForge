@@ -30,6 +30,7 @@ builder.Services.AddSingleton<AgentRegistry>();
 var correlationOptions = builder.Configuration.GetSection("Correlation").Get<CorrelationOptions>() ?? new CorrelationOptions();
 correlationOptions.Validate();
 builder.Services.AddSingleton(correlationOptions);
+builder.Services.AddSingleton<CorrelationRuleCatalog>();
 builder.Services.AddSingleton<NotificationConfiguration>(_ => NotificationConfiguration.Load(AppContext.BaseDirectory));
 builder.Services.AddSingleton<SloConfiguration>(_ => SloConfiguration.Load(AppContext.BaseDirectory));
 builder.Services.AddSingleton<NotificationQueue>();
@@ -59,7 +60,8 @@ if (!string.IsNullOrWhiteSpace(otlpEndpoint))
 var app = builder.Build();
 var secrets = app.Services.GetRequiredService<SecuritySecrets>();
 var identity = app.Services.GetRequiredService<OperatorIdentity>();
-Console.WriteLine($"OpsForge v1.3.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
+_ = app.Services.GetRequiredService<CorrelationRuleCatalog>();
+Console.WriteLine($"OpsForge v1.4.0 security bootstrap ready. Enrollment token: {secrets.EnrollmentTokenPath}");
 Console.WriteLine(File.Exists(secrets.BootstrapAdminPath)
     ? $"Initial administrator credentials (first run only): {secrets.BootstrapAdminPath}"
     : "Initial administrator bootstrap credentials have already been consumed.");
@@ -82,9 +84,9 @@ app.MapGet("/api/health", (SqliteRepository repository) => Results.Ok(new
 {
     ok = true,
     service = "OpsForge Server",
-    version = "1.3.0",
+    version = "1.4.0",
     persistence = repository.DatabaseLabel,
-    correlationEngine = "configurable-window-v3",
+    correlationEngine = "designer-preview-history-v4",
     topologyEngine = "dynamic-multinode-v1",
     reliabilityEngine = "slo-burnrate-v2",
     securityModel = "rbac-sessions-agent-mtls-v1",
@@ -253,6 +255,60 @@ app.MapGet("/api/timeline", (HttpContext context, OperatorIdentity auth, Telemet
 app.MapGet("/api/commands", (HttpContext context, OperatorIdentity auth, TelemetryStore store) => ReadAccess(context, auth, () => Results.Ok(store.GetCommands())));
 app.MapGet("/api/topology", (HttpContext context, OperatorIdentity auth, TelemetryStore store) => ReadAccess(context, auth, () => Results.Ok(store.GetTopology())));
 app.MapGet("/api/operator-summary", (HttpContext context, OperatorIdentity auth, TelemetryStore store) => ReadAccess(context, auth, () => Results.Ok(store.GetOperatorSummary())));
+
+app.MapGet("/api/correlation-rules", (HttpContext context, OperatorIdentity auth, CorrelationRuleCatalog rules) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Viewer, false);
+    return access.Failure ?? Results.Ok(rules.GetActiveRules());
+});
+
+app.MapPost("/api/correlation-rules/validate", (HttpContext context, CorrelationRuleSetDto request, OperatorIdentity auth, CorrelationRuleCatalog rules) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, true);
+    return access.Failure ?? Results.Ok(rules.Validate(request.Rules));
+});
+
+app.MapPost("/api/correlation-rules/preview", (HttpContext context, CorrelationRulePreviewRequest request, OperatorIdentity auth, CorrelationRuleCatalog rules, TelemetryStore store) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, true);
+    if (access.Failure is not null) return access.Failure;
+    var snapshot = store.GetAgents().FirstOrDefault(agent => string.Equals(agent.Heartbeat.AgentId, request.AgentId?.Trim(), StringComparison.OrdinalIgnoreCase));
+    if (snapshot is null) return Results.NotFound(new { error = "Agent heartbeat not found." });
+    return Results.Ok(rules.Preview(snapshot.Heartbeat, request.Rules));
+});
+
+app.MapGet("/api/correlation-rules/history", (HttpContext context, int? limit, OperatorIdentity auth, CorrelationRuleCatalog rules) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, false);
+    return access.Failure ?? Results.Ok(rules.GetHistory(limit ?? 100));
+});
+
+app.MapGet("/api/correlation-rules/export", (HttpContext context, OperatorIdentity auth, CorrelationRuleCatalog rules) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, false);
+    return access.Failure ?? Results.Ok(rules.Export());
+});
+
+app.MapPost("/api/correlation-rules/import", (HttpContext context, CorrelationRuleImportRequest request, OperatorIdentity auth, CorrelationRuleCatalog rules, SqliteRepository repository) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, true);
+    if (access.Failure is not null) return access.Failure;
+    var validation = rules.Validate(request.Rules);
+    if (!validation.Valid) return Results.BadRequest(validation);
+    var version = rules.Activate(request.Rules, access.Principal!.Username, request.Note);
+    Audit(repository, access.Principal!, "correlation.rules.activate", version.VersionId, $"Activated {version.RuleCount} correlation rules · sha256 {version.Sha256}. {version.Note}", "success", context);
+    return Results.Ok(version);
+});
+
+app.MapPost("/api/correlation-rules/restore/{versionId}", (HttpContext context, string versionId, OperatorIdentity auth, CorrelationRuleCatalog rules, SqliteRepository repository) =>
+{
+    var access = Authorize(context, auth, OpsForgeRoles.Administrator, true);
+    if (access.Failure is not null) return access.Failure;
+    var restored = rules.Restore(versionId, access.Principal!.Username);
+    if (restored is null) return Results.NotFound(new { error = "Correlation rule history version not found." });
+    Audit(repository, access.Principal!, "correlation.rules.restore", restored.VersionId, $"Restored from {versionId}; new active version {restored.VersionId} · sha256 {restored.Sha256}.", "success", context);
+    return Results.Ok(restored);
+});
 
 app.MapGet("/api/notifications", (HttpContext context, int? limit, OperatorIdentity auth, NotificationStore notifications) =>
 {
